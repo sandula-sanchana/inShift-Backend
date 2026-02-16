@@ -1,4 +1,4 @@
-package com.inshift.branch.dto;
+package edu.ijse.inshiftbackend.dto;
 
 import jakarta.annotation.Nullable;
 import jakarta.validation.constraints.*;
