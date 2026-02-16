@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 @Data
 public class APIResponse<T> {
 
-    private String status;
+    private int status;
     private String message;
     private T data;
 
