@@ -11,6 +11,7 @@ import lombok.*;
 @Builder
 public class BranchDTO {
 
+    @Nullable
     private Long branchId;
 
     @NotBlank(message = "Branch code is required")
