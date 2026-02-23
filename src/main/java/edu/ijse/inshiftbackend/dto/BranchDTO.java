@@ -48,6 +48,11 @@ public class BranchDTO {
     @NotNull(message = "Longitude is required")
     private Double longitude;
 
+    @NotNull(message = "Allowed radius is required")
+    @Min(value = 10, message = "Radius must be at least 10 meters")
+    @Max(value = 5000, message = "Radius must be <= 5000 meters")
+    private Integer radiusMeters;
+
     @NotBlank(message = "Contact number is required")
     @Pattern(
             regexp = "^(\\+94|0)?7\\d{8}$",

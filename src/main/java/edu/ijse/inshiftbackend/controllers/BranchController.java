@@ -8,12 +8,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
-@RestController("api/v1/branch")
+@RestController
 @RequiredArgsConstructor
+@RequestMapping("api/v1/branch")
+@CrossOrigin(origins = "http://localhost:5173")
 public class BranchController {
 
     private final BranchService branchService;
@@ -22,7 +22,7 @@ public class BranchController {
 
      @PostMapping
      public  ResponseEntity<APIResponse<String>> createBranch(@RequestBody @Valid BranchDTO branchDTO){
-
+         branchService.createBranch(branchDTO);
          return ResponseEntity.status(HttpStatus.CREATED).body(
                  new APIResponse<>(201,
                          "Branch Saved Successfully",

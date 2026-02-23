@@ -38,6 +38,8 @@ public class Branch {
 
     private Double longitude;
 
+    private Integer radiusMeters;
+
     private String contactNumber;
 
     private String email;
