@@ -1,0 +1,43 @@
+package edu.ijse.inshiftbackend.entity;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+@Entity
+@Table(name = "employee")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class Employee {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long employeeId;
+
+    @Column(nullable = false, unique = true, length = 20)
+    private String empCode;
+
+    @Column(nullable = false, length = 120)
+    private String fullName;
+
+    @Column(unique = true, length = 120)
+    private String email;
+
+    @Column(length = 20)
+    private String phone;
+
+    @Column(nullable = false, length = 30)
+    private String role; // EMPLOYEE, SUPERVISOR, HR, ADMIN
+
+    @Column(nullable = false)
+    private Boolean active;
+
+    @Column(nullable = false)
+    private String passwordHash;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "branch_id", referencedColumnName = "branchId")
+    private Branch branch;
+}
