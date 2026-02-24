@@ -135,6 +135,8 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .phone(emp.getPhone())
                 .role(emp.getRole())
                 .branchId(emp.getBranch().getBranchId())
+                .branchName(emp.getBranch().getBranchName())
+                .branchCode(emp.getBranch().getBranchCode())
                 .active(emp.getActive())
                 .build();
 
@@ -144,7 +146,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     }
 
     private String generateTempPassword() {
-        // Temp@ + 4 digits + 1 letter
+        //  Temp@ + 4 digits + 1 letter
         int n = 1000 + RAND.nextInt(9000);
         char ch = (char) ('A' + RAND.nextInt(26));
         return "Temp@" + n + ch;

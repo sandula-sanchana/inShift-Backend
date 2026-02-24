@@ -42,6 +42,12 @@ public class EmployeeDTO {
     @NotNull(message = "Branch is required")
     private Long branchId;
 
+    @Nullable
+    private String branchName;
+
+    @Nullable
+    private String branchCode;
+
     @NotNull(message = "Active status must be specified")
     private Boolean active;
 

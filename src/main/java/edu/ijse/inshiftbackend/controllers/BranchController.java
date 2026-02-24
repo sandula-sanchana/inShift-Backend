@@ -33,8 +33,8 @@ public class BranchController {
 
      }
      @GetMapping
-     @ResponseStatus(HttpStatus.CREATED)
-     public APIResponse<List<BranchDTO>> updateBranch(@RequestBody @Valid BranchDTO branchDTO){
+     @ResponseStatus(HttpStatus.OK)
+     public APIResponse<List<BranchDTO>> updateBranch(){
          List<BranchDTO> branches=branchService.getAllBranch();
          return new APIResponse<>(
                  200,

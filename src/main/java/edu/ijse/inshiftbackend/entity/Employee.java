@@ -37,7 +37,7 @@ public class Employee {
     @Column(nullable = false)
     private String passwordHash;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "branch_id", referencedColumnName = "branchId")
     private Branch branch;
 }
