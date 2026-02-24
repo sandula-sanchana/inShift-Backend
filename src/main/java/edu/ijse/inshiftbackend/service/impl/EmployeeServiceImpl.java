@@ -102,7 +102,7 @@ public class EmployeeServiceImpl implements EmployeeService {
         existing.setActive(dto.getActive());
         existing.setBranch(branch);
 
-        // ✅ We do NOT update password here (admin reset can be separate endpoint later)
+        //We do NOT update password here (admin reset can be separate endpoint later)
         employeeRepository.save(existing);
     }
 
@@ -138,13 +138,13 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .active(emp.getActive())
                 .build();
 
-        // never expose password
+
         dto.setPassword(null);
         return dto;
     }
 
     private String generateTempPassword() {
-        // Stronger than just digits: Temp@ + 4 digits + 1 letter
+        // Temp@ + 4 digits + 1 letter
         int n = 1000 + RAND.nextInt(9000);
         char ch = (char) ('A' + RAND.nextInt(26));
         return "Temp@" + n + ch;
