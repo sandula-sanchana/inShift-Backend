@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class BranchServiceImpl implements BranchService {
@@ -23,5 +25,10 @@ public class BranchServiceImpl implements BranchService {
             throw  new BadRequestException("branchDTO is null");
         }
          branchRepository.save(modelMapper.map(branchDTO, Branch.class));
+    }
+
+    @Override
+    public List<BranchDTO> getAllBranch() {
+        return branchRepository.findAll().stream().map(b->modelMapper.map(b, BranchDTO.class)).toList();
     }
 }

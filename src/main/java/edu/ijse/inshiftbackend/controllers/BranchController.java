@@ -10,6 +10,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("api/v1/branch")
@@ -29,6 +31,16 @@ public class BranchController {
                          null)
          );
 
+     }
+     @GetMapping
+     @ResponseStatus(HttpStatus.CREATED)
+     public APIResponse<List<BranchDTO>> updateBranch(@RequestBody @Valid BranchDTO branchDTO){
+         List<BranchDTO> branches=branchService.getAllBranch();
+         return new APIResponse<>(
+                 200,
+                 "Ok",
+                 branches
+         );
      }
 
 }
