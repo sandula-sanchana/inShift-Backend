@@ -1,5 +1,6 @@
 package edu.ijse.inshiftbackend.dto;
 
+import edu.ijse.inshiftbackend.entity.Role;
 import jakarta.annotation.Nullable;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
@@ -37,7 +38,7 @@ public class EmployeeDTO {
             regexp = "^(EMPLOYEE|SUPERVISOR|HR|ADMIN)$",
             message = "Role must be EMPLOYEE, SUPERVISOR, HR, or ADMIN"
     )
-    private String role;
+    private Role role;
 
     @NotNull(message = "Branch is required")
     private Long branchId;

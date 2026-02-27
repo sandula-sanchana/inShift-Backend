@@ -29,7 +29,8 @@ public class Employee {
     private String phone;
 
     @Column(nullable = false, length = 30)
-    private String role; // EMPLOYEE, SUPERVISOR, HR, ADMIN
+    @Enumerated(EnumType.STRING)
+    private Role role; // EMPLOYEE, SUPERVISOR, HR, ADMIN
 
     @Column(nullable = false)
     private Boolean active;
