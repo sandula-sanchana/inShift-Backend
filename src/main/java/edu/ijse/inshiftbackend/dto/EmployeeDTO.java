@@ -49,6 +49,9 @@ public class EmployeeDTO {
     @Nullable
     private String branchCode;
 
+    @Nullable
+    private Boolean mustChangePassword;
+
     @NotNull(message = "Active status must be specified")
     private Boolean active;
 

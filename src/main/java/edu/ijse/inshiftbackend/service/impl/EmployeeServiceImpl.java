@@ -61,6 +61,7 @@ public class EmployeeServiceImpl implements EmployeeService {
         emp.setPhone(dto.getPhone() == null || dto.getPhone().isBlank() ? null : dto.getPhone().trim());
         emp.setRole(dto.getRole());
         emp.setActive(dto.getActive());
+        emp.setMustChangePassword(true);
         emp.setBranch(branch);
 
         // store only hash
@@ -155,6 +156,7 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .branchId(emp.getBranch().getBranchId())
                 .branchName(emp.getBranch().getBranchName())
                 .branchCode(emp.getBranch().getBranchCode())
+                .mustChangePassword(emp.getMustChangePassword())
                 .active(emp.getActive())
                 .build();
 
