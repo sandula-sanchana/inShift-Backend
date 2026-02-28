@@ -10,6 +10,8 @@ import edu.ijse.inshiftbackend.repository.EmployeeRepository;
 import edu.ijse.inshiftbackend.service.EmployeeService;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -104,6 +106,22 @@ public class EmployeeServiceImpl implements EmployeeService {
 
         //We do NOT update password here (admin reset can be separate endpoint later)
         employeeRepository.save(existing);
+    }
+
+    @Override
+    public EmployeeDTO getMe() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
+        if (auth == null || !auth.isAuthenticated() || auth.getName() == null) {
+            throw new BadRequestException("Unauthenticated");
+        }
+
+        String email = auth.getName();
+
+        Employee emp = employeeRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
+
+        return toDto(emp);
     }
 
     @Override

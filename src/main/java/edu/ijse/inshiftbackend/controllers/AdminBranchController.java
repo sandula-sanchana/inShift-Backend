@@ -13,7 +13,7 @@ import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/v1/admin/branch")
+@RequestMapping("/api/v1/admin/branches")
 @CrossOrigin(origins = "http://localhost:5173")
 public class AdminBranchController {
 
