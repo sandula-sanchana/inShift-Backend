@@ -36,6 +36,9 @@ public class Employee {
     private Boolean active;
 
     @Column(nullable = false)
+    private Boolean mustChangePassword;
+
+    @Column(nullable = false)
     private String passwordHash;
 
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
