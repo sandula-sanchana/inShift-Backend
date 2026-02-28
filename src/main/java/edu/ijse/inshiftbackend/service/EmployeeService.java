@@ -1,5 +1,6 @@
 package edu.ijse.inshiftbackend.service;
 
+import edu.ijse.inshiftbackend.dto.ChangePasswordDTO;
 import edu.ijse.inshiftbackend.dto.EmployeeDTO;
 
 import java.util.List;
@@ -18,4 +19,6 @@ public interface EmployeeService {
     EmployeeDTO getEmployeeById(Long id);
 
     EmployeeDTO getMe();
+
+    void changeMyPassword(ChangePasswordDTO dto);
 }

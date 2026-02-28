@@ -1,5 +1,6 @@
 package edu.ijse.inshiftbackend.service.impl;
 
+import edu.ijse.inshiftbackend.dto.ChangePasswordDTO;
 import edu.ijse.inshiftbackend.dto.EmployeeDTO;
 import edu.ijse.inshiftbackend.entity.Branch;
 import edu.ijse.inshiftbackend.entity.Employee;
@@ -165,10 +166,40 @@ public class EmployeeServiceImpl implements EmployeeService {
         return dto;
     }
 
+    @Override
+    public void changeMyPassword(ChangePasswordDTO dto) {
+        if (dto == null) throw new BadRequestException("Request body is null");
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
+        if (auth == null || !auth.isAuthenticated() || auth.getName() == null) {
+            throw new BadRequestException("Unauthenticated");
+        }
+
+        String email = auth.getName();
+
+        Employee emp = employeeRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
+
+        if (!passwordEncoder.matches(dto.getCurrentPassword(), emp.getPasswordHash())) {
+            throw new BadRequestException("Current password is incorrect");
+        }
+
+
+        if (passwordEncoder.matches(dto.getNewPassword(), emp.getPasswordHash())) {
+            throw new BadRequestException("New password must be different");
+        }
+
+        emp.setPasswordHash(passwordEncoder.encode(dto.getNewPassword()));
+        emp.setMustChangePassword(false);
+        employeeRepository.save(emp);
+    }
+
     private String generateTempPassword() {
         //  Temp@ + 4 digits + 1 letter
         int n = 1000 + RAND.nextInt(9000);
         char ch = (char) ('A' + RAND.nextInt(26));
         return "Temp@" + n + ch;
     }
+
 }
