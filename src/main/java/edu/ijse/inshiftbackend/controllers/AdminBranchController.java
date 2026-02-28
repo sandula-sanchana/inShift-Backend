@@ -5,7 +5,6 @@ import edu.ijse.inshiftbackend.service.BranchService;
 import edu.ijse.inshiftbackend.util.APIResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -16,7 +15,7 @@ import java.util.List;
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/admin/branch")
 @CrossOrigin(origins = "http://localhost:5173")
-public class BranchController {
+public class AdminBranchController {
 
     private final BranchService branchService;
 

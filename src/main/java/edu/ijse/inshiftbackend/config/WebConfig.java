@@ -43,7 +43,7 @@ public class WebConfig {
                 employee->org.springframework.security.core.userdetails.User.builder()
                         .username(employee.getEmail())
                         .password(employee.getPasswordHash())
-                        .authorities(List.of(new SimpleGrantedAuthority("ROLE_"+employee.getRole()))).build()
+                        .authorities(List.of(new SimpleGrantedAuthority("ROLE_"+employee.getRole().name()))).build()
         ).orElseThrow(()->new UsernameNotFoundException("User not found"));
     }
 }

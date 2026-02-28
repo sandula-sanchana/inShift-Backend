@@ -6,7 +6,6 @@ import edu.ijse.inshiftbackend.util.APIResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -16,7 +15,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 @RequestMapping("api/v1/employees")
 @CrossOrigin(origins = "http://localhost:5173")
-public class EmployeeController {
+public class AdminEmployeeController {
 
     private final EmployeeService employeeService;
 

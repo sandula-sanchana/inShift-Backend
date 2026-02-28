@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("api/v1/geocode")
 @CrossOrigin(origins = "http://localhost:5173")
 @RequiredArgsConstructor
-public class GeoController {
+public class AdminGeoController {
 
 
     private final GeoService geoService;
