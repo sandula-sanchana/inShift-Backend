@@ -45,6 +45,7 @@ public class AuthServiceImpl implements AuthService {
 
         String accessToken = jwtUtil.generateToken(employee.getEmail(), employee.getRole().name());
 
+        System.out.println(accessToken);
 
         return new AuthResponseDTO(accessToken, employee.getRole().name());
     }

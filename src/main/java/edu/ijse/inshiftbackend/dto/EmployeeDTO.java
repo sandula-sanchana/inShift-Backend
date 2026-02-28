@@ -33,7 +33,7 @@ public class EmployeeDTO {
     @Pattern(regexp = "^(\\+94|0)?7\\d{8}$", message = "Invalid Sri Lankan phone number")
     private String phone;
 
-    @NotBlank(message = "Role is required")
+    @NotNull(message = "Role is required")
     @Pattern(
             regexp = "^(EMPLOYEE|SUPERVISOR|HR|ADMIN)$",
             message = "Role must be EMPLOYEE, SUPERVISOR, HR, or ADMIN"

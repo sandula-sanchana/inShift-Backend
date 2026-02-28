@@ -7,7 +7,7 @@ import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("api/v1/geocode")
+@RequestMapping("api/v1/admin/geocode")
 @CrossOrigin(origins = "http://localhost:5173")
 @RequiredArgsConstructor
 public class AdminGeoController {
