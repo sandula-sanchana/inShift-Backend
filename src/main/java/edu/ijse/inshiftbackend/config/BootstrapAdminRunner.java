@@ -2,7 +2,7 @@ package edu.ijse.inshiftbackend.config;
 
 import edu.ijse.inshiftbackend.entity.Branch;
 import edu.ijse.inshiftbackend.entity.Employee;
-import edu.ijse.inshiftbackend.entity.Role;
+import edu.ijse.inshiftbackend.entity.enums.Role;
 import edu.ijse.inshiftbackend.repository.BranchRepository;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
 import lombok.RequiredArgsConstructor;

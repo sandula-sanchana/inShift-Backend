@@ -1,4 +1,4 @@
-package edu.ijse.inshiftbackend.entity;
+package edu.ijse.inshiftbackend.entity.enums;
 
 public enum Role {
     ADMIN,

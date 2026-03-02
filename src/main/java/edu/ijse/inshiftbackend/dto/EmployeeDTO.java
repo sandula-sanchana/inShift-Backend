@@ -1,6 +1,6 @@
 package edu.ijse.inshiftbackend.dto;
 
-import edu.ijse.inshiftbackend.entity.Role;
+import edu.ijse.inshiftbackend.entity.enums.Role;
 import jakarta.annotation.Nullable;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;

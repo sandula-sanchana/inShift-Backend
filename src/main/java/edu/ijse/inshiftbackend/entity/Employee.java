@@ -1,5 +1,6 @@
 package edu.ijse.inshiftbackend.entity;
 
+import edu.ijse.inshiftbackend.entity.enums.Role;
 import jakarta.persistence.*;
 import lombok.*;
 
