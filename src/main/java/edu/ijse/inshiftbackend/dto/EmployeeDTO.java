@@ -34,10 +34,6 @@ public class EmployeeDTO {
     private String phone;
 
     @NotNull(message = "Role is required")
-    @Pattern(
-            regexp = "^(EMPLOYEE|SUPERVISOR|HR|ADMIN)$",
-            message = "Role must be EMPLOYEE, SUPERVISOR, HR, or ADMIN"
-    )
     private Role role;
 
     @NotNull(message = "Branch is required")

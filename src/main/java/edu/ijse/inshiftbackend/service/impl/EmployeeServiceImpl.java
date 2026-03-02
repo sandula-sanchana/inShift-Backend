@@ -33,6 +33,8 @@ public class EmployeeServiceImpl implements EmployeeService {
     @Override
     public String saveEmployee(EmployeeDTO dto) {
 
+        System.out.println(">>> saveEmployee called: " + dto);
+
         if (dto == null) throw new BadRequestException("employeeDTO is null");
 
         String empCode = dto.getEmpCode().trim();
