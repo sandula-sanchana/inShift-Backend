@@ -1,17 +1,14 @@
 package edu.ijse.inshiftbackend.service.impl;
 
 import edu.ijse.inshiftbackend.dto.AuthDTO;
-import edu.ijse.inshiftbackend.dto.AuthResponseDTO;
+import edu.ijse.inshiftbackend.dto.response.AuthResponseDTO;
 import edu.ijse.inshiftbackend.entity.Employee;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
 import edu.ijse.inshiftbackend.service.AuthService;
 import edu.ijse.inshiftbackend.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor

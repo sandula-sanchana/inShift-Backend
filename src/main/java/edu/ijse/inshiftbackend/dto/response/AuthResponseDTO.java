@@ -1,4 +1,4 @@
-package edu.ijse.inshiftbackend.dto;
+package edu.ijse.inshiftbackend.dto.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

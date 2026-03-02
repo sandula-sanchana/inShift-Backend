@@ -1,7 +1,7 @@
 package edu.ijse.inshiftbackend.controllers;
 
 import edu.ijse.inshiftbackend.dto.AuthDTO;
-import edu.ijse.inshiftbackend.dto.AuthResponseDTO;
+import edu.ijse.inshiftbackend.dto.response.AuthResponseDTO;
 import edu.ijse.inshiftbackend.service.AuthService;
 import edu.ijse.inshiftbackend.util.APIResponse;
 import jakarta.validation.Valid;
