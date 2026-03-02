@@ -8,6 +8,7 @@ import edu.ijse.inshiftbackend.exception.custom.BadRequestException;
 import edu.ijse.inshiftbackend.exception.custom.ResourceNotFoundException;
 import edu.ijse.inshiftbackend.repository.*;
 import edu.ijse.inshiftbackend.service.AttendanceService;
+import edu.ijse.inshiftbackend.util.GeoUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -41,24 +42,43 @@ public class AttendanceServiceImpl implements AttendanceService {
                 attendanceRepository
                         .findTopByEmployeeEmployeeIdOrderByEventTimeDesc(employee.getEmployeeId());
 
-        // 🔥 RULE 1: Prevent double IN
+        // RULE 1: Prevent double IN
         if (type == AttendanceType.IN) {
             if (last.isPresent() && last.get().getType() == AttendanceType.IN) {
                 throw new BadRequestException("Already checked in");
             }
         }
 
-        // 🔥 RULE 2: Prevent OUT without IN
+        //RULE 2: Prevent OUT without IN
         if (type == AttendanceType.OUT) {
             if (last.isEmpty() || last.get().getType() != AttendanceType.IN) {
                 throw new BadRequestException("Cannot check out without checking in first");
             }
         }
 
-        // 🔥 Optional rule: require location for mobile
+        //location for mobile
         if (source == AttendanceSource.MOBILE) {
+
             if (dto.getLat() == null || dto.getLng() == null) {
                 throw new BadRequestException("Location required for mobile attendance");
+            }
+
+            Branch branch = employee.getBranch();
+
+            if (branch.getLatitude() == null || branch.getLongitude() == null || branch.getRadiusMeters() == null) {
+                throw new BadRequestException("Branch location configuration missing");
+            }
+            //check if the emp ins the allowed zone
+            boolean inside = GeoUtil.isWithinRadius(
+                    branch.getLatitude(),
+                    branch.getLongitude(),
+                    dto.getLat(),
+                    dto.getLng(),
+                    branch.getRadiusMeters()
+            );
+
+            if (!inside) {
+                throw new BadRequestException("You are outside the allowed work area");
             }
         }
 
@@ -86,7 +106,7 @@ public class AttendanceServiceImpl implements AttendanceService {
 
         AttendanceRecord saved = attendanceRepository.save(record);
 
-        // 🔥 Save Audit
+        //Save Audit
         AttendanceAudit audit = AttendanceAudit.builder()
                 .attendance(saved)
                 .action(AuditAction.CREATE)
