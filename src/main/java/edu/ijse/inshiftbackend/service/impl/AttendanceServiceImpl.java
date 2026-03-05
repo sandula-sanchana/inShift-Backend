@@ -2,17 +2,23 @@ package edu.ijse.inshiftbackend.service.impl;
 
 import edu.ijse.inshiftbackend.dto.AttendancePunchDTO;
 import edu.ijse.inshiftbackend.dto.response.AttendanceResponseDTO;
-import edu.ijse.inshiftbackend.entity.*;
+import edu.ijse.inshiftbackend.entity.AttendanceAudit;
+import edu.ijse.inshiftbackend.entity.AttendanceRecord;
+import edu.ijse.inshiftbackend.entity.Branch;
+import edu.ijse.inshiftbackend.entity.Employee;
 import edu.ijse.inshiftbackend.entity.enums.*;
 import edu.ijse.inshiftbackend.exception.custom.BadRequestException;
 import edu.ijse.inshiftbackend.exception.custom.ResourceNotFoundException;
-import edu.ijse.inshiftbackend.repository.*;
+import edu.ijse.inshiftbackend.repository.AttendanceAuditRepository;
+import edu.ijse.inshiftbackend.repository.AttendanceRecordRepository;
+import edu.ijse.inshiftbackend.repository.EmployeeRepository;
 import edu.ijse.inshiftbackend.service.AttendanceService;
 import edu.ijse.inshiftbackend.util.GeoUtil;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.Locale;
 import java.util.Optional;
 
 @Service
@@ -25,69 +31,51 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     @Transactional
-    public AttendanceResponseDTO punch(
-            AttendancePunchDTO dto,
-            AttendanceSource source,
-            String email
-    ) {
+    public AttendanceResponseDTO punch(AttendancePunchDTO dto, AttendanceSource source, String email) {
 
         Employee employee = employeeRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
 
-        if (!employee.getActive()) {
+        if (Boolean.FALSE.equals(employee.getActive())) {
             throw new BadRequestException("Inactive employee cannot mark attendance");
         }
 
-        AttendanceType type = AttendanceType.valueOf(dto.getType());
+        AttendanceType type = parseAttendanceType(dto.getType());
 
-        Optional<AttendanceRecord> last =
-                attendanceRepository
-                        .findTopByEmployeeEmployeeIdOrderByEventTimeDesc(employee.getEmployeeId());
+        //last accepted/valid record (used for IN/OUT flow)
+        Optional<AttendanceRecord> lastValid =
+                attendanceRepository.findTopByEmployeeEmployeeIdAndStatusOrderByEventTimeDesc(
+                        employee.getEmployeeId(),
+                        AttendanceStatus.VALID
+                );
 
-        // RULE 1: Prevent double IN
-        if (type == AttendanceType.IN) {
-            if (last.isPresent() && last.get().getType() == AttendanceType.IN) {
-                throw new BadRequestException("Already checked in");
-            }
-        }
+        //last record overall
+        Optional<AttendanceRecord> lastAny =
+                attendanceRepository.findTopByEmployeeEmployeeIdOrderByEventTimeDesc(employee.getEmployeeId());
 
-        //RULE 2: Prevent OUT without IN
-        if (type == AttendanceType.OUT) {
-            if (last.isEmpty() || last.get().getType() != AttendanceType.IN) {
-                throw new BadRequestException("Cannot check out without checking in first");
-            }
-        }
+        //Enforce Web rules
+        validateWebRules(dto, source);
 
-        //location for mobile
+        //Location checks for MOBILE (required + inside branch radius)
         if (source == AttendanceSource.MOBILE) {
-
-            if (dto.getLat() == null || dto.getLng() == null) {
-                throw new BadRequestException("Location required for mobile attendance");
-            }
-
-            Branch branch = employee.getBranch();
-
-            if (branch.getLatitude() == null || branch.getLongitude() == null || branch.getRadiusMeters() == null) {
-                throw new BadRequestException("Branch location configuration missing");
-            }
-            //check if the emp ins the allowed zone
-            boolean inside = GeoUtil.isWithinRadius(
-                    branch.getLatitude(),
-                    branch.getLongitude(),
-                    dto.getLat(),
-                    dto.getLng(),
-                    branch.getRadiusMeters()
-            );
-
-            if (!inside) {
-                throw new BadRequestException("You are outside the allowed work area");
-            }
+            validateMobileLocation(dto, employee.getBranch());
         }
 
-        AttendanceStatus status =
-                (source == AttendanceSource.WEB)
-                        ? AttendanceStatus.PENDING
-                        : AttendanceStatus.VALID;
+        //IN/OUT Rules
+        validatePunchFlow(type, lastValid, lastAny);
+
+        AttendanceStatus status = (source == AttendanceSource.WEB)
+                ? AttendanceStatus.PENDING
+                : AttendanceStatus.VALID;
+
+        boolean verified = (source != AttendanceSource.WEB);
+
+
+        VerificationMethod verificationMethod = (source == AttendanceSource.MOBILE)
+                ? VerificationMethod.PASSKEY
+                : (source == AttendanceSource.WEB)
+                ? VerificationMethod.ADMIN
+                : VerificationMethod.NONE;
 
         AttendanceRecord record = AttendanceRecord.builder()
                 .employee(employee)
@@ -99,32 +87,111 @@ public class AttendanceServiceImpl implements AttendanceService {
                 .lng(dto.getLng())
                 .locationText(dto.getLocationText())
                 .reason(dto.getReason())
-                .verified(source != AttendanceSource.WEB)
-                .verificationMethod(source != AttendanceSource.WEB
-                        ? VerificationMethod.NONE
-                        : VerificationMethod.ADMIN)
+                .verified(verified)
+                .verificationMethod(verificationMethod)
                 .createdBy("EMPLOYEE")
                 .build();
 
         AttendanceRecord saved = attendanceRepository.save(record);
 
-        //Save Audit
         AttendanceAudit audit = AttendanceAudit.builder()
                 .attendance(saved)
                 .action(AuditAction.CREATE)
                 .doneByRole("EMPLOYEE")
                 .doneByUserId(employee.getEmployeeId())
-                .note("Attendance punch created")
+                .note(buildAuditNote(type, source, status))
                 .build();
 
         auditRepository.save(audit);
 
+        return mapToResponse(saved);
+    }
+
+
+    private AttendanceType parseAttendanceType(String typeStr) {
+        try {
+            return AttendanceType.valueOf(typeStr.trim().toUpperCase(Locale.ROOT));
+        } catch (Exception e) {
+            throw new BadRequestException("Invalid attendance type. Must be IN or OUT");
+        }
+    }
+
+    private void validateWebRules(AttendancePunchDTO dto, AttendanceSource source) {
+        if (source == AttendanceSource.WEB) {
+            if (dto.getReason() == null || dto.getReason().trim().isEmpty()) {
+                throw new BadRequestException("Reason is required for Web attendance");
+            }
+        }
+    }
+
+    private void validateMobileLocation(AttendancePunchDTO dto, Branch branch) {
+
+        if (dto.getLat() == null || dto.getLng() == null) {
+            throw new BadRequestException("Location required for mobile attendance");
+        }
+
+        if (branch == null) {
+            throw new BadRequestException("Employee branch not assigned");
+        }
+
+        if (branch.getLatitude() == null || branch.getLongitude() == null || branch.getRadiusMeters() == null) {
+            throw new BadRequestException("Branch location configuration missing");
+        }
+
+        boolean inside = GeoUtil.isWithinRadius(
+                branch.getLatitude(),
+                branch.getLongitude(),
+                dto.getLat(),
+                dto.getLng(),
+                branch.getRadiusMeters()
+        );
+
+        if (!inside) {
+            throw new BadRequestException("You are outside the allowed work area");
+        }
+    }
+
+    private void validatePunchFlow(
+            AttendanceType type,
+            Optional<AttendanceRecord> lastValid,
+            Optional<AttendanceRecord> lastAny
+    ) {
+        //If last record overall is PENDING IN, block OUT until approved
+        if (type == AttendanceType.OUT && lastAny.isPresent()) {
+            AttendanceRecord last = lastAny.get();
+            if (last.getType() == AttendanceType.IN && last.getStatus() == AttendanceStatus.PENDING) {
+                throw new BadRequestException("Your last check-in is pending approval. You cannot check out yet.");
+            }
+            if (last.getType() == AttendanceType.IN && last.getStatus() == AttendanceStatus.REJECTED) {
+                throw new BadRequestException("Your last check-in was rejected. Please submit a valid check-in first.");
+            }
+        }
+
+        //Use VALID flow for session rules
+        if (type == AttendanceType.IN) {
+            if (lastValid.isPresent() && lastValid.get().getType() == AttendanceType.IN) {
+                throw new BadRequestException("Already checked in");
+            }
+        }
+
+        if (type == AttendanceType.OUT) {
+            if (lastValid.isEmpty() || lastValid.get().getType() != AttendanceType.IN) {
+                throw new BadRequestException("Cannot check out without a valid check-in");
+            }
+        }
+    }
+
+    private String buildAuditNote(AttendanceType type, AttendanceSource source, AttendanceStatus status) {
+        return "Punch " + type + " via " + source + " saved as " + status;
+    }
+
+    private AttendanceResponseDTO mapToResponse(AttendanceRecord saved) {
         return AttendanceResponseDTO.builder()
                 .id(saved.getId())
-                .employeeId(employee.getEmployeeId())
-                .employeeName(employee.getFullName())
-                .branchId(employee.getBranch().getBranchId())
-                .branchName(employee.getBranch().getBranchName())
+                .employeeId(saved.getEmployee().getEmployeeId())
+                .employeeName(saved.getEmployee().getFullName())
+                .branchId(saved.getBranch().getBranchId())
+                .branchName(saved.getBranch().getBranchName())
                 .type(saved.getType().name())
                 .source(saved.getSource().name())
                 .status(saved.getStatus().name())

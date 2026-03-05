@@ -1,14 +1,18 @@
 package edu.ijse.inshiftbackend.repository;
 
 import edu.ijse.inshiftbackend.entity.AttendanceRecord;
+import edu.ijse.inshiftbackend.entity.enums.AttendanceStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
-@Repository
-public interface AttendanceRecordRepository
-        extends JpaRepository<AttendanceRecord, Long> {
+public interface AttendanceRecordRepository extends JpaRepository<AttendanceRecord, Long> {
 
     Optional<AttendanceRecord> findTopByEmployeeEmployeeIdOrderByEventTimeDesc(Long employeeId);
+
+    //last record that is "accepted" (VALID) - used to decide active session
+    Optional<AttendanceRecord> findTopByEmployeeEmployeeIdAndStatusOrderByEventTimeDesc(
+            Long employeeId,
+            AttendanceStatus status
+    );
 }
