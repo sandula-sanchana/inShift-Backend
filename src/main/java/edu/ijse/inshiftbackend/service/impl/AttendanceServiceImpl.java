@@ -9,6 +9,7 @@ import edu.ijse.inshiftbackend.exception.custom.ResourceNotFoundException;
 import edu.ijse.inshiftbackend.repository.*;
 import edu.ijse.inshiftbackend.service.AttendanceService;
 import edu.ijse.inshiftbackend.util.GeoUtil;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +24,7 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final EmployeeRepository employeeRepository;
 
     @Override
+    @Transactional
     public AttendanceResponseDTO punch(
             AttendancePunchDTO dto,
             AttendanceSource source,

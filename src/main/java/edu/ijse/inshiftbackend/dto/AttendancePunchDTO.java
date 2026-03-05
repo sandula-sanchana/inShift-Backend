@@ -12,9 +12,6 @@ import lombok.*;
 @Builder
 public class AttendancePunchDTO {
 
-    @NotNull(message = "Branch ID is required")
-    private Long branchId;
-
     @NotNull(message = "Type is required")
     @Pattern(regexp = "IN|OUT", message = "Type must be IN or OUT")
     private String type;
