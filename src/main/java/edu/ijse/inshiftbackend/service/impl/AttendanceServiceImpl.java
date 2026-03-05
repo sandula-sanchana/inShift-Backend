@@ -1,6 +1,7 @@
 package edu.ijse.inshiftbackend.service.impl;
 
 import edu.ijse.inshiftbackend.dto.AttendancePunchDTO;
+import edu.ijse.inshiftbackend.dto.response.AttendanceDecisionDTO;
 import edu.ijse.inshiftbackend.dto.response.AttendanceResponseDTO;
 import edu.ijse.inshiftbackend.entity.AttendanceAudit;
 import edu.ijse.inshiftbackend.entity.AttendanceRecord;
@@ -18,6 +19,7 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -105,6 +107,21 @@ public class AttendanceServiceImpl implements AttendanceService {
         auditRepository.save(audit);
 
         return mapToResponse(saved);
+    }
+
+    @Override
+    public List<AttendanceResponseDTO> getPending() {
+        return List.of();
+    }
+
+    @Override
+    public AttendanceResponseDTO approve(Long attendanceId, String adminEmail) {
+        return null;
+    }
+
+    @Override
+    public AttendanceResponseDTO reject(Long attendanceId, AttendanceDecisionDTO dto, String adminEmail) {
+        return null;
     }
 
 
