@@ -1,4 +1,4 @@
-package edu.ijse.inshiftbackend.dto.response;
+package edu.ijse.inshiftbackend.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;

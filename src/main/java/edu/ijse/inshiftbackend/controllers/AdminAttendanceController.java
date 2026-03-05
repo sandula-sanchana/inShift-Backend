@@ -1,6 +1,6 @@
 package edu.ijse.inshiftbackend.controllers;
 
-import edu.ijse.inshiftbackend.dto.response.AttendanceDecisionDTO;
+import edu.ijse.inshiftbackend.dto.AttendanceDecisionDTO;
 import edu.ijse.inshiftbackend.dto.response.AttendanceResponseDTO;
 import edu.ijse.inshiftbackend.service.AttendanceService;
 import edu.ijse.inshiftbackend.util.APIResponse;

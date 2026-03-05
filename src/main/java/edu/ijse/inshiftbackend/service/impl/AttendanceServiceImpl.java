@@ -1,7 +1,7 @@
 package edu.ijse.inshiftbackend.service.impl;
 
 import edu.ijse.inshiftbackend.dto.AttendancePunchDTO;
-import edu.ijse.inshiftbackend.dto.response.AttendanceDecisionDTO;
+import edu.ijse.inshiftbackend.dto.AttendanceDecisionDTO;
 import edu.ijse.inshiftbackend.dto.response.AttendanceResponseDTO;
 import edu.ijse.inshiftbackend.entity.AttendanceAudit;
 import edu.ijse.inshiftbackend.entity.AttendanceRecord;
@@ -110,18 +110,99 @@ public class AttendanceServiceImpl implements AttendanceService {
     }
 
     @Override
+    @Transactional
     public List<AttendanceResponseDTO> getPending() {
-        return List.of();
+
+        return attendanceRepository
+                .findAllByStatusOrderByEventTimeDesc(AttendanceStatus.PENDING)
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
     }
 
     @Override
+    @Transactional
     public AttendanceResponseDTO approve(Long attendanceId, String adminEmail) {
-        return null;
+
+        //Validate admin exists (role check can be added later if you have roles)
+        Employee admin = employeeRepository.findByEmail(adminEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("Admin not found"));
+
+        //Find attendance record
+        AttendanceRecord record = attendanceRepository.findById(attendanceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Attendance not found"));
+
+        //Only pending can be approved
+        if (record.getStatus() != AttendanceStatus.PENDING) {
+            throw new BadRequestException("Only PENDING attendance can be approved");
+        }
+
+
+        record.setStatus(AttendanceStatus.VALID);
+        record.setVerified(true);
+        record.setVerificationMethod(VerificationMethod.ADMIN);
+        record.setDecisionNote(null);
+        record.setCreatedBy("ADMIN");
+
+        AttendanceRecord saved = attendanceRepository.save(record);
+
+        //audit
+        AttendanceAudit audit = AttendanceAudit.builder()
+                .attendance(saved)
+                .action(AuditAction.APPROVE)
+                .doneByRole("ADMIN")
+                .doneByUserId(admin.getEmployeeId())
+                .note("Attendance approved")
+                .build();
+
+        auditRepository.save(audit);
+
+        return mapToResponse(saved);
     }
 
     @Override
+    @Transactional
     public AttendanceResponseDTO reject(Long attendanceId, AttendanceDecisionDTO dto, String adminEmail) {
-        return null;
+
+
+        Employee admin = employeeRepository.findByEmail(adminEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("Admin not found"));
+
+
+        AttendanceRecord record = attendanceRepository.findById(attendanceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Attendance not found"));
+
+
+        if (record.getStatus() != AttendanceStatus.PENDING) {
+            throw new BadRequestException("Only PENDING attendance can be rejected");
+        }
+
+        String note = (dto == null || dto.getNote() == null) ? null : dto.getNote().trim();
+        if (note == null || note.isEmpty()) {
+            throw new BadRequestException("Decision note is required");
+        }
+
+
+        record.setStatus(AttendanceStatus.REJECTED);
+        record.setVerified(false);
+        record.setVerificationMethod(VerificationMethod.ADMIN);
+        record.setDecisionNote(note);
+        record.setCreatedBy("ADMIN");
+
+        AttendanceRecord saved = attendanceRepository.save(record);
+
+
+        AttendanceAudit audit = AttendanceAudit.builder()
+                .attendance(saved)
+                .action(AuditAction.REJECT)
+                .doneByRole("ADMIN")
+                .doneByUserId(admin.getEmployeeId())
+                .note("Attendance rejected: " + note)
+                .build();
+
+        auditRepository.save(audit);
+
+        return mapToResponse(saved);
     }
 
 
