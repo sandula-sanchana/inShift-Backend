@@ -15,7 +15,7 @@ import java.util.List;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/admin/attendance")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin
 public class AdminAttendanceController {
 
     private final AttendanceService attendanceService;

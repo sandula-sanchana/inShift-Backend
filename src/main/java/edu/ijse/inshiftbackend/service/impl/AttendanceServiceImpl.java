@@ -94,6 +94,17 @@ public class AttendanceServiceImpl implements AttendanceService {
                 .createdBy("EMPLOYEE")
                 .build();
 
+        System.out.println("SOURCE = " + source);
+        System.out.println("TYPE = " + type);
+        System.out.println("DTO LAT = " + dto.getLat());
+        System.out.println("DTO LNG = " + dto.getLng());
+        System.out.println("BRANCH LAT = " + employee.getBranch().getLatitude());
+        System.out.println("BRANCH LNG = " + employee.getBranch().getLongitude());
+        System.out.println("RADIUS = " + employee.getBranch().getRadiusMeters());
+        System.out.println("LAST VALID = " + lastValid.map(AttendanceRecord::getType).orElse(null));
+        System.out.println("LAST ANY STATUS = " + lastAny.map(AttendanceRecord::getStatus).orElse(null));
+        System.out.println("LAST ANY TYPE = " + lastAny.map(AttendanceRecord::getType).orElse(null));
+
         AttendanceRecord saved = attendanceRepository.save(record);
 
         AttendanceAudit audit = AttendanceAudit.builder()
@@ -142,7 +153,6 @@ public class AttendanceServiceImpl implements AttendanceService {
         record.setVerified(true);
         record.setVerificationMethod(VerificationMethod.ADMIN);
         record.setDecisionNote(null);
-        record.setCreatedBy("ADMIN");
 
         AttendanceRecord saved = attendanceRepository.save(record);
 
@@ -187,7 +197,6 @@ public class AttendanceServiceImpl implements AttendanceService {
         record.setVerified(false);
         record.setVerificationMethod(VerificationMethod.ADMIN);
         record.setDecisionNote(note);
-        record.setCreatedBy("ADMIN");
 
         AttendanceRecord saved = attendanceRepository.save(record);
 

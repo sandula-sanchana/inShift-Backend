@@ -14,7 +14,7 @@ import java.util.List;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/admin/branches")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin
 public class AdminBranchController {
 
     private final BranchService branchService;
