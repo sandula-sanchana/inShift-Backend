@@ -31,7 +31,7 @@ public class PasskeyCredential {
     private String credentialId;
 
     @Lob
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String publicKey;
 
     private Long signCount;
@@ -44,4 +44,11 @@ public class PasskeyCredential {
     private LocalDateTime createdAt;
 
     private LocalDateTime lastUsedAt;
+
+    @PrePersist
+    public void prePersist() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
+    }
 }
