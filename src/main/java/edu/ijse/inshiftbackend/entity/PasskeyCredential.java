@@ -1,6 +1,5 @@
 package edu.ijse.inshiftbackend.entity;
 
-import edu.ijse.inshiftbackend.entity.enums.WebAuthnChallengePurpose;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -12,30 +11,37 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Table(name = "webauthn_challenge")
-public class WebAuthnChallenge {
+@Table(
+        name = "passkey_credential",
+        uniqueConstraints = {
+                @UniqueConstraint(columnNames = "credentialId")
+        }
+)
+public class PasskeyCredential {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 500)
-    private String challenge;
-
-    @Column(nullable = false)
-    private boolean used;
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "employee_id", nullable = false)
     private Employee employee;
 
+    @Column(nullable = false, length = 500)
+    private String credentialId;
+
+    @Lob
     @Column(nullable = false)
-    private LocalDateTime expiresAt;
+    private String publicKey;
+
+    private Long signCount;
+
+    private String deviceName;
 
     @Column(nullable = false)
+    private boolean active;
+
     private LocalDateTime createdAt;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private WebAuthnChallengePurpose purpose;
+    private LocalDateTime lastUsedAt;
 }
