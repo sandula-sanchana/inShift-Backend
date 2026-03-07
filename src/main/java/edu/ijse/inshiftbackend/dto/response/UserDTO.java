@@ -8,7 +8,7 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 public class UserDTO {
-    private String id;          // Base64URL encoded user handle
-    private String name;        // usually email or username
+    private String id;
+    private String email;
     private String displayName; // full name
 }

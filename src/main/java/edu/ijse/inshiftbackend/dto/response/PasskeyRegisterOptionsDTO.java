@@ -1,6 +1,7 @@
 package edu.ijse.inshiftbackend.dto.response;
 
 import lombok.*;
+
 import java.util.List;
 
 @Getter
@@ -10,9 +11,17 @@ import java.util.List;
 @Builder
 public class PasskeyRegisterOptionsDTO {
 
-    private String challenge;
     private RpDTO rp;
     private UserDTO user;
+    private String challenge;
+
     private List<PubKeyCredParamDTO> pubKeyCredParams;
 
+    private Integer timeout;
+    private String attestation;
+
+    // simplified authenticatorSelection fields
+    private String authenticatorAttachment; // platform -> device biometrics
+    private String residentKey;             // preferred / required
+    private String userVerification;        // required  ->  for biomatrics
 }

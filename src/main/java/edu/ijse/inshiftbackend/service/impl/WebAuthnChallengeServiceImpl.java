@@ -25,12 +25,8 @@ public class WebAuthnChallengeServiceImpl implements WebAuthnChallengeService {
     private final WebAuthnChallengeRepository webAuthnChallengeRepository;
 
     @Override
-    public String createChallenge(WebAuthnChallengePurpose purpose) {
+    public String createChallenge(WebAuthnChallengePurpose purpose,Employee employee) {
 
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-
-        Employee employee = employeeRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
 
         byte[] challengeBytes = new byte[32];
         secureRandom.nextBytes(challengeBytes);
@@ -68,6 +64,8 @@ public class WebAuthnChallengeServiceImpl implements WebAuthnChallengeService {
         if (challenge.getExpiresAt().isBefore(LocalDateTime.now())) {
             throw new BadRequestException("WebAuthn challenge has expired");
         }
+
+        //TODO: i need to remove or clean expired one too
 
         return challenge;
     }
