@@ -1,15 +1,21 @@
 package edu.ijse.inshiftbackend.service.impl;
 
+import edu.ijse.inshiftbackend.dto.PasskeyRegisterVerifyDTO;
 import edu.ijse.inshiftbackend.dto.response.PasskeyRegisterOptionsDTO;
 import edu.ijse.inshiftbackend.dto.response.PubKeyCredParamDTO;
 import edu.ijse.inshiftbackend.dto.response.RpDTO;
 import edu.ijse.inshiftbackend.dto.response.UserDTO;
 import edu.ijse.inshiftbackend.entity.Employee;
+import edu.ijse.inshiftbackend.entity.PasskeyCredential;
+import edu.ijse.inshiftbackend.entity.WebAuthnChallenge;
 import edu.ijse.inshiftbackend.entity.enums.WebAuthnChallengePurpose;
+import edu.ijse.inshiftbackend.exception.custom.BadRequestException;
 import edu.ijse.inshiftbackend.exception.custom.ResourceNotFoundException;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
+import edu.ijse.inshiftbackend.repository.PasskeyCredentialRepository;
 import edu.ijse.inshiftbackend.service.PasskeyService;
 import edu.ijse.inshiftbackend.service.WebAuthnChallengeService;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -24,6 +30,7 @@ public class PasskeyServiceImpl implements PasskeyService {
 
     private final WebAuthnChallengeService webAuthnChallengeService;
     private final EmployeeRepository employeeRepository;
+    private final PasskeyCredentialRepository passkeyCredentialRepository;
 
     @Override
     public PasskeyRegisterOptionsDTO getPasskeyRegisterResponse(WebAuthnChallengePurpose purpose) {
@@ -36,7 +43,7 @@ public class PasskeyServiceImpl implements PasskeyService {
         String challenge = webAuthnChallengeService.createChallenge(purpose, employee);
 
         if (challenge == null || challenge.isBlank()) {
-            throw new RuntimeException("Challenge is null or empty");
+            throw new BadRequestException("Challenge is null or empty");
         }
 
         String userIdBase64Url = Base64.getUrlEncoder()
@@ -72,5 +79,39 @@ public class PasskeyServiceImpl implements PasskeyService {
                 .residentKey("preferred")
                 .userVerification("required")
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public void verifyAndSavePasskey(PasskeyRegisterVerifyDTO dto) {
+
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+
+        Employee employee = employeeRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
+
+        WebAuthnChallenge challenge =
+                webAuthnChallengeService.getValidChallenge(WebAuthnChallengePurpose.REGISTER);
+
+        if (dto == null) {
+            throw new BadRequestException("Passkey register verify payload is null");
+        }
+
+        if (passkeyCredentialRepository.existsByCredentialId(dto.getCredentialId())) {
+            throw new BadRequestException("Passkey credential already exists");
+        }
+
+        PasskeyCredential credential = PasskeyCredential.builder()
+                .employee(employee)
+                .credentialId(dto.getCredentialId())
+                .publicKey(dto.getPublicKey())
+                .signCount(dto.getSignCount() == null ? 0L : dto.getSignCount())
+                .deviceName(dto.getDeviceName())
+                .active(true)
+                .build();
+
+        passkeyCredentialRepository.save(credential);
+
+        webAuthnChallengeService.markChallengeAsUsed(challenge);
     }
 }

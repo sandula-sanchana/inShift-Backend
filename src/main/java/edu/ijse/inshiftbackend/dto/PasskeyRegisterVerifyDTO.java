@@ -19,9 +19,5 @@ public class PasskeyRegisterVerifyDTO {
 
     private Long signCount;
 
-    private String transports;
-
-    private String aaguid;
-
     private String deviceName;
 }
