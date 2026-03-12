@@ -1,7 +1,6 @@
 package edu.ijse.inshiftbackend.controllers;
 
 import edu.ijse.inshiftbackend.dto.PasskeyRegisterVerifyDTO;
-import edu.ijse.inshiftbackend.dto.response.PasskeyRegisterOptionsDTO;
 import edu.ijse.inshiftbackend.entity.enums.WebAuthnChallengePurpose;
 import edu.ijse.inshiftbackend.service.PasskeyService;
 import edu.ijse.inshiftbackend.util.APIResponse;
