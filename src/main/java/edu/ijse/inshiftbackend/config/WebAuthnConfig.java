@@ -28,8 +28,7 @@ public class WebAuthnConfig {
                 .identity(relyingPartyIdentity)
                 .credentialRepository(credentialRepository)
                 .origins(Set.of(
-                        "https://provocatively-televisional-wei.ngrok-free.dev",
-                        "http://localhost:5173"
+                        "https://provocatively-televisional-wei.ngrok-free.dev"
                 ))
                 .build();
     }
