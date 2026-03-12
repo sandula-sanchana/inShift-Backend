@@ -12,7 +12,12 @@ public interface PasskeyCredentialRepository extends JpaRepository<PasskeyCreden
 
     boolean existsByCredentialId(String credentialId);
 
-    Optional<PasskeyCredential> findByCredentialIdAndActiveTrue(String credentialId);
+    List<PasskeyCredential> findAllByEmployeeEmailAndActiveTrue(String email);
 
-    List<PasskeyCredential> findAllByEmployeeEmployeeIdAndActiveTrue(Long employeeId);
+    Optional<PasskeyCredential> findByCredentialIdAndEmployeeEmployeeIdAndActiveTrue(
+            String credentialId,
+            Long employeeId
+    );
+
+    List<PasskeyCredential> findAllByCredentialIdAndActiveTrue(String credentialId);
 }
