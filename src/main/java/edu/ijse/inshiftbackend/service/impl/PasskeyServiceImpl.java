@@ -10,6 +10,7 @@ import com.yubico.webauthn.data.ClientRegistrationExtensionOutputs;
 import com.yubico.webauthn.data.PublicKeyCredential;
 import com.yubico.webauthn.data.PublicKeyCredentialCreationOptions;
 import com.yubico.webauthn.data.UserIdentity;
+import edu.ijse.inshiftbackend.dto.PasskeyAssertionVerifyDTO;
 import edu.ijse.inshiftbackend.dto.PasskeyRegisterVerifyDTO;
 import edu.ijse.inshiftbackend.entity.Employee;
 import edu.ijse.inshiftbackend.entity.PasskeyCredential;
@@ -19,6 +20,7 @@ import edu.ijse.inshiftbackend.exception.custom.BadRequestException;
 import edu.ijse.inshiftbackend.exception.custom.ResourceNotFoundException;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
 import edu.ijse.inshiftbackend.repository.PasskeyCredentialRepository;
+import edu.ijse.inshiftbackend.repository.WebAuthnAssertionRequestRepository;
 import edu.ijse.inshiftbackend.repository.WebAuthnRegistrationRequestRepository;
 import edu.ijse.inshiftbackend.service.PasskeyService;
 import jakarta.transaction.Transactional;
@@ -37,6 +39,7 @@ public class PasskeyServiceImpl implements PasskeyService {
     private final PasskeyCredentialRepository passkeyCredentialRepository;
     private final WebAuthnRegistrationRequestRepository registrationRequestRepository;
     private final RelyingParty relyingParty;
+    private final WebAuthnAssertionRequestRepository assertionRequestRepository;
 
     @Override
     public String getPasskeyRegisterResponse(WebAuthnChallengePurpose purpose) {
@@ -139,5 +142,15 @@ public class PasskeyServiceImpl implements PasskeyService {
         } catch (Exception e) {
             throw new BadRequestException("Passkey registration verification failed");
         }
+    }
+
+    @Override
+    public String getPasskeyAssertionResponse(WebAuthnChallengePurpose purpose) {
+        return "";
+    }
+
+    @Override
+    public void verifyPasskeyAssertion(PasskeyAssertionVerifyDTO dto) {
+
     }
 }

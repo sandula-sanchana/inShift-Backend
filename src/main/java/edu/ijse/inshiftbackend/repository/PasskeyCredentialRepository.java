@@ -20,4 +20,7 @@ public interface PasskeyCredentialRepository extends JpaRepository<PasskeyCreden
     );
 
     List<PasskeyCredential> findAllByCredentialIdAndActiveTrue(String credentialId);
+
+
+    Optional<PasskeyCredential> findByCredentialIdAndActiveTrue(String credentialId);
 }
