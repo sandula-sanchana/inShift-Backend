@@ -49,7 +49,9 @@ public class PasskeyServiceImpl implements PasskeyService {
                 .name(employee.getEmail())
                 .displayName(employee.getFullName())
                 .id(new ByteArray(
-                        employee.getEmployeeId().toString().getBytes(StandardCharsets.UTF_8)
+                        java.nio.ByteBuffer.allocate(Long.BYTES)
+                                .putLong(employee.getEmployeeId())
+                                .array()
                 ))
                 .build();
 
