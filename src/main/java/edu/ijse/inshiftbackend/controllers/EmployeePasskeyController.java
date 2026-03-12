@@ -1,5 +1,6 @@
 package edu.ijse.inshiftbackend.controllers;
 
+import edu.ijse.inshiftbackend.dto.PasskeyAssertionVerifyDTO;
 import edu.ijse.inshiftbackend.dto.PasskeyRegisterVerifyDTO;
 import edu.ijse.inshiftbackend.entity.enums.WebAuthnChallengePurpose;
 import edu.ijse.inshiftbackend.service.PasskeyService;
@@ -34,6 +35,27 @@ public class EmployeePasskeyController {
         return new APIResponse<>(
                 200,
                 "Passkey registered successfully",
+                null
+        );
+    }
+
+    @PostMapping("/assertion/options")
+    @ResponseStatus(HttpStatus.OK)
+    public APIResponse<String> getAssertionOptions() {
+        return new APIResponse<>(
+                200,
+                "Passkey assertion options generated successfully",
+                passkeyService.getPasskeyAssertionResponse(WebAuthnChallengePurpose.AUTHENTICATE)
+        );
+    }
+
+    @PostMapping("/assertion/verify")
+    @ResponseStatus(HttpStatus.OK)
+    public APIResponse<Void> verifyAssertion(@RequestBody @Valid PasskeyAssertionVerifyDTO dto) {
+        passkeyService.verifyPasskeyAssertion(dto);
+        return new APIResponse<>(
+                200,
+                "Passkey verified successfully",
                 null
         );
     }

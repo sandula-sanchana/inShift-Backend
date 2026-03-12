@@ -27,8 +27,16 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import com.yubico.webauthn.AssertionRequest;
+import com.yubico.webauthn.FinishAssertionOptions;
+import com.yubico.webauthn.AssertionResult;
+import com.yubico.webauthn.StartAssertionOptions;
+import com.yubico.webauthn.data.AuthenticatorAssertionResponse;
+import com.yubico.webauthn.data.ClientAssertionExtensionOutputs;
+import edu.ijse.inshiftbackend.entity.WebAuthnAssertionRequest;
 
-import java.nio.charset.StandardCharsets;
+
+
 import java.time.LocalDateTime;
 
 @Service
@@ -86,6 +94,7 @@ public class PasskeyServiceImpl implements PasskeyService {
     @Override
     @Transactional
     public void verifyAndSavePasskey(PasskeyRegisterVerifyDTO dto) {
+
         if (dto == null || dto.getCredentialJson() == null || dto.getCredentialJson().isBlank()) {
             throw new BadRequestException("Credential JSON is required");
         }
@@ -146,11 +155,88 @@ public class PasskeyServiceImpl implements PasskeyService {
 
     @Override
     public String getPasskeyAssertionResponse(WebAuthnChallengePurpose purpose) {
-        return "";
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+
+        Employee employee = employeeRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
+
+        try {
+            AssertionRequest request = relyingParty.startAssertion(
+                    StartAssertionOptions.builder()
+                            .username(employee.getEmail())
+                            .build()
+            );
+
+            WebAuthnAssertionRequest savedRequest = WebAuthnAssertionRequest.builder()
+                    .employee(employee)
+                    .purpose(purpose)
+                    .requestJson(request.toJson())
+                    .used(false)
+                    .createdAt(LocalDateTime.now())
+                    .expiresAt(LocalDateTime.now().plusMinutes(5))
+                    .build();
+
+            assertionRequestRepository.save(savedRequest);
+
+            return request.toCredentialsGetJson();
+
+        } catch (Exception e) {
+            throw new BadRequestException("Failed to create passkey assertion options");
+        }
     }
 
     @Override
+    @Transactional
     public void verifyPasskeyAssertion(PasskeyAssertionVerifyDTO dto) {
+        if (dto == null || dto.getCredentialJson() == null || dto.getCredentialJson().isBlank()) {
+            throw new BadRequestException("Credential JSON is required");
+        }
 
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+
+        Employee employee = employeeRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
+
+        WebAuthnAssertionRequest savedRequest = assertionRequestRepository
+                .findTopByEmployeeAndPurposeAndUsedFalseAndExpiresAtAfterOrderByCreatedAtDesc(
+                        employee,
+                        WebAuthnChallengePurpose.AUTHENTICATE,
+                        LocalDateTime.now()
+                )
+                .orElseThrow(() -> new BadRequestException("No valid assertion request found"));
+
+        try {
+            AssertionRequest request = AssertionRequest.fromJson(savedRequest.getRequestJson());
+
+            PublicKeyCredential<AuthenticatorAssertionResponse, ClientAssertionExtensionOutputs> pkc =
+                    PublicKeyCredential.parseAssertionResponseJson(dto.getCredentialJson());
+
+            AssertionResult result = relyingParty.finishAssertion(
+                    FinishAssertionOptions.builder()
+                            .request(request)
+                            .response(pkc)
+                            .build()
+            );
+
+            if (!result.isSuccess()) {
+                throw new BadRequestException("Passkey assertion failed");
+            }
+
+            PasskeyCredential credential = passkeyCredentialRepository
+                    .findByCredentialIdAndActiveTrue(result.getCredentialId().getBase64Url())
+                    .orElseThrow(() -> new BadRequestException("Credential not found"));
+
+            credential.setSignCount(result.getSignatureCount());
+            credential.setLastUsedAt(LocalDateTime.now());
+            passkeyCredentialRepository.save(credential);
+
+            savedRequest.setUsed(true);
+            assertionRequestRepository.save(savedRequest);
+
+        } catch (BadRequestException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BadRequestException("Passkey assertion verification failed");
+        }
     }
 }
