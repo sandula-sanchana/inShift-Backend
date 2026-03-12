@@ -19,7 +19,7 @@ public class EmployeePasskeyController {
 
     @PostMapping("/register/options")
     @ResponseStatus(HttpStatus.OK)
-    public APIResponse<PasskeyRegisterOptionsDTO> getRegisterOptions() {
+    public APIResponse<String> getRegisterOptions() {
         return new APIResponse<>(
                 200,
                 "Passkey register options generated successfully",
