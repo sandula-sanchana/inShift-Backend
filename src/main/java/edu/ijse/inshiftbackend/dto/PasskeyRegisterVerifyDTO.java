@@ -1,8 +1,9 @@
 package edu.ijse.inshiftbackend.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
-
 
 @Getter
 @Setter
@@ -11,13 +12,18 @@ import lombok.*;
 @Builder
 public class PasskeyRegisterVerifyDTO {
 
-    @NotBlank(message = "Credential ID is required")
-    private String credentialId;
+    @NotBlank(message = "Credential id is required")
+    private String id;
 
-    @NotBlank(message = "Public key is required")
-    private String publicKey;
+    @NotBlank(message = "Raw id is required")
+    private String rawId;
 
-    private Long signCount;
+    @NotBlank(message = "Credential type is required")
+    private String type;
+
+    @Valid
+    @NotNull(message = "Response is required")
+    private AttestationResponseDTO response;
 
     private String deviceName;
 }

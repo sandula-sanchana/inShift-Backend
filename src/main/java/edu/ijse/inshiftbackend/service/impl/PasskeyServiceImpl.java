@@ -1,5 +1,6 @@
 package edu.ijse.inshiftbackend.service.impl;
 
+import edu.ijse.inshiftbackend.dto.CollectedClientDataDTO;
 import edu.ijse.inshiftbackend.dto.PasskeyRegisterVerifyDTO;
 import edu.ijse.inshiftbackend.dto.response.PasskeyRegisterOptionsDTO;
 import edu.ijse.inshiftbackend.dto.response.PubKeyCredParamDTO;
@@ -19,6 +20,7 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -31,6 +33,10 @@ public class PasskeyServiceImpl implements PasskeyService {
     private final WebAuthnChallengeService webAuthnChallengeService;
     private final EmployeeRepository employeeRepository;
     private final PasskeyCredentialRepository passkeyCredentialRepository;
+    private final ObjectMapper objectMapper;
+
+    private static final String EXPECTED_ORIGIN = "http://localhost:5173";
+    private static final String EXPECTED_CLIENT_DATA_TYPE = "webauthn.create";
 
     @Override
     public PasskeyRegisterOptionsDTO getPasskeyRegisterResponse(WebAuthnChallengePurpose purpose) {
@@ -97,21 +103,40 @@ public class PasskeyServiceImpl implements PasskeyService {
             throw new BadRequestException("Passkey register verify payload is null");
         }
 
-        if (passkeyCredentialRepository.existsByCredentialId(dto.getCredentialId())) {
-            throw new BadRequestException("Passkey credential already exists");
+        if (!"public-key".equals(dto.getType())) {
+            throw new BadRequestException("Invalid credential type");
         }
 
-        PasskeyCredential credential = PasskeyCredential.builder()
-                .employee(employee)
-                .credentialId(dto.getCredentialId())
-                .publicKey(dto.getPublicKey())
-                .signCount(dto.getSignCount() == null ? 0L : dto.getSignCount())
-                .deviceName(dto.getDeviceName())
-                .active(true)
-                .build();
+        if (dto.getResponse() == null) {
+            throw new BadRequestException("Attestation response is required");
+        }
 
-        passkeyCredentialRepository.save(credential);
+        CollectedClientDataDTO clientData = parseClientData(dto.getResponse().getClientDataJSON());
 
-        webAuthnChallengeService.markChallengeAsUsed(challenge);
+        if (clientData.getChallenge() == null || !clientData.getChallenge().equals(challenge.getChallenge())) {
+            throw new BadRequestException("Challenge does not match");
+        }
+
+        if (clientData.getOrigin() == null ||
+                !clientData.getOrigin().equals(EXPECTED_ORIGIN)) {
+            throw new BadRequestException("Invalid origin");
+        }
+
+        if (clientData.getType() == null ||
+                !clientData.getType().equals(EXPECTED_CLIENT_DATA_TYPE)) {
+            throw new BadRequestException("Invalid client data type");
+        }
+
+        // attestationObject verification comes next
+        throw new BadRequestException("clientDataJSON verified successfully; attestationObject verification not implemented yet");
+    }
+
+    private CollectedClientDataDTO parseClientData(String clientDataJSONBase64Url) {
+        try {
+            byte[] decoded = Base64.getUrlDecoder().decode(clientDataJSONBase64Url);
+            return objectMapper.readValue(decoded, CollectedClientDataDTO.class);
+        } catch (Exception e) {
+            throw new BadRequestException("Invalid clientDataJSON");
+        }
     }
 }

@@ -1,6 +1,7 @@
 package edu.ijse.inshiftbackend.config;
 
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
@@ -30,6 +31,11 @@ public class WebConfig {
     @Bean
     public ModelMapper modelMapper() {
         return new ModelMapper();
+    }
+
+    @Bean
+    public ObjectMapper objectMapper() {
+        return new ObjectMapper();
     }
 
     @Bean
