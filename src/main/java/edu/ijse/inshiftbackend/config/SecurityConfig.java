@@ -59,8 +59,4 @@ public class SecurityConfig {
         return provider;
     }
 
-    @Bean
-    public SecureRandom secureRandom() {
-        return new SecureRandom();
-    }
 }
