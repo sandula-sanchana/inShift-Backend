@@ -33,4 +33,9 @@ public class AttendanceResponseDTO {
     private String verificationMethod;
 
     private String decisionNote;      // if rejected
+
+    private String attendanceMark;
+    private Integer lateMinutes;
+    private Integer earlyLeaveMinutes;
+    private Integer overtimeMinutes;
 }

@@ -73,6 +73,19 @@ public class AttendanceRecord {
     @Column(nullable = false, length = 20)
     private String createdBy; // EMPLOYEE / ADMIN / SYSTEM
 
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private AttendanceMark attendanceMark;
+
+    @Column
+    private Integer lateMinutes;
+
+    @Column
+    private Integer earlyLeaveMinutes;
+
+    @Column
+    private Integer overtimeMinutes;
+
 
     @OneToMany(mappedBy = "attendance", cascade = CascadeType.ALL)
     private List<AttendanceAudit> audits;
@@ -82,5 +95,9 @@ public class AttendanceRecord {
         if (eventTime == null) eventTime = LocalDateTime.now();
         if (status == null) status = AttendanceStatus.VALID;
         if (verificationMethod == null) verificationMethod = VerificationMethod.NONE;
+        if (attendanceMark == null) attendanceMark = AttendanceMark.NORMAL;
+        if (lateMinutes == null) lateMinutes = 0;
+        if (earlyLeaveMinutes == null) earlyLeaveMinutes = 0;
+        if (overtimeMinutes == null) overtimeMinutes = 0;
     }
 }
