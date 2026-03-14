@@ -5,6 +5,7 @@ import edu.ijse.inshiftbackend.entity.enums.AttendanceStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,4 +23,10 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
 
     //to load all pending attendance for admin
     List<AttendanceRecord> findAllByStatusOrderByEventTimeDesc(AttendanceStatus status);
+
+    List<AttendanceRecord> findAllByEmployeeEmployeeIdAndEventTimeBetweenOrderByEventTimeAsc(
+            Long employeeId,
+            LocalDateTime start,
+            LocalDateTime end
+    );
 }

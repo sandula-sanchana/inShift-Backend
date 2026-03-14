@@ -20,6 +20,7 @@ import edu.ijse.inshiftbackend.repository.AttendanceAuditRepository;
 import edu.ijse.inshiftbackend.repository.AttendanceRecordRepository;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
 import edu.ijse.inshiftbackend.service.AttendanceService;
+import edu.ijse.inshiftbackend.service.AttendanceSummaryService;
 import edu.ijse.inshiftbackend.util.GeoUtil;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,7 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final AttendanceRecordRepository attendanceRepository;
     private final AttendanceAuditRepository auditRepository;
     private final EmployeeRepository employeeRepository;
+    private final AttendanceSummaryService attendanceSummaryService;
 
     @Override
     @Transactional
@@ -116,6 +118,8 @@ public class AttendanceServiceImpl implements AttendanceService {
                 .build();
 
         AttendanceRecord saved = attendanceRepository.save(record);
+
+        attendanceSummaryService.generateDailySummary(employee.getEmployeeId(), now.toLocalDate()); // generate summery after each punch
 
         AttendanceAudit audit = AttendanceAudit.builder()
                 .attendance(saved)
