@@ -29,4 +29,6 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
             LocalDateTime start,
             LocalDateTime end
     );
+
+    long countByStatus(AttendanceStatus status);
 }

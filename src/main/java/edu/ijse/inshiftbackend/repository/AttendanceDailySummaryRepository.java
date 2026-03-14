@@ -1,6 +1,7 @@
 package edu.ijse.inshiftbackend.repository;
 
 import edu.ijse.inshiftbackend.entity.AttendanceDailySummary;
+import edu.ijse.inshiftbackend.entity.enums.AttendanceDayStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDate;
@@ -14,4 +15,10 @@ public interface AttendanceDailySummaryRepository extends JpaRepository<Attendan
     List<AttendanceDailySummary> findAllBySummaryDate(LocalDate summaryDate);
 
     List<AttendanceDailySummary> findAllByEmployeeEmployeeIdOrderBySummaryDateDesc(Long employeeId);
+
+    long countBySummaryDateAndPresentTrue(LocalDate summaryDate);
+
+    long countBySummaryDateAndDayStatus(LocalDate summaryDate, AttendanceDayStatus dayStatus);
+
+    long countBySummaryDateAndOvertimeMinutesGreaterThan(LocalDate summaryDate, Integer overtimeMinutes);
 }
