@@ -12,4 +12,5 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
     Optional<Employee> findByEmail(String email);
     boolean existsByEmpCode(String empCode);
     boolean existsByEmail(String email);
+    long countByActiveTrue();
 }

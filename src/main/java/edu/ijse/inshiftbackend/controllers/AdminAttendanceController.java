@@ -1,8 +1,10 @@
 package edu.ijse.inshiftbackend.controllers;
 
 import edu.ijse.inshiftbackend.dto.AttendanceDecisionDTO;
+import edu.ijse.inshiftbackend.dto.response.AdminAttendanceDashboardDTO;
 import edu.ijse.inshiftbackend.dto.response.AttendanceDailySummaryResponseDTO;
 import edu.ijse.inshiftbackend.dto.response.AttendanceResponseDTO;
+import edu.ijse.inshiftbackend.service.AttendanceDashboardService;
 import edu.ijse.inshiftbackend.service.AttendanceService;
 import edu.ijse.inshiftbackend.service.AttendanceSummaryService;
 import edu.ijse.inshiftbackend.util.APIResponse;
@@ -23,6 +25,7 @@ public class AdminAttendanceController {
 
     private final AttendanceService attendanceService;
     private final AttendanceSummaryService attendanceSummaryService;
+    private final AttendanceDashboardService attendanceDashboardService;
 
     @GetMapping("/pending")
     @ResponseStatus(HttpStatus.OK)
@@ -57,5 +60,11 @@ public class AdminAttendanceController {
                 attendanceSummaryService.generateDailySummary(employeeId, date);
 
         return new APIResponse<>(200, "Employee attendance summary", res);
+    }
+
+    @GetMapping("/dashboard/today")
+    @ResponseStatus(HttpStatus.OK)
+    public APIResponse<AdminAttendanceDashboardDTO> getTodayDashboard() {
+        return new APIResponse<>(200, "Today dashboard stats", attendanceDashboardService.getTodayDashboard());
     }
 }
