@@ -59,7 +59,7 @@ public class BootstrapAdminRunner implements CommandLineRunner {
 
         employeeRepository.save(admin);
 
-        System.out.println("✅ Bootstrap ADMIN created: " + adminEmail);
-        System.out.println("✅ Password: " + adminPassword);
+        System.out.println("Bootstrap ADMIN created: " + adminEmail);
+        System.out.println("Password: " + adminPassword);
     }
 }
