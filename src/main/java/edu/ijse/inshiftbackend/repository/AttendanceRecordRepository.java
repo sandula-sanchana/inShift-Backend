@@ -2,6 +2,7 @@ package edu.ijse.inshiftbackend.repository;
 
 import edu.ijse.inshiftbackend.entity.AttendanceRecord;
 import edu.ijse.inshiftbackend.entity.enums.AttendanceStatus;
+import edu.ijse.inshiftbackend.entity.enums.AttendanceType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -30,7 +31,14 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
             LocalDateTime end
     );
 
-    long countByStatus(AttendanceStatus status);
 
     long countByStatusAndEventTimeBetween(AttendanceStatus status, LocalDateTime start, LocalDateTime end);
+
+    boolean existsByEmployeeEmployeeIdAndTypeAndStatusAndEventTimeBetween(
+            Long employeeId,
+            AttendanceType type,
+            AttendanceStatus status,
+            LocalDateTime start,
+            LocalDateTime end
+    );
 }
