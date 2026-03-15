@@ -59,6 +59,7 @@ public class AttendanceServiceImpl implements AttendanceService {
 
         AttendanceType type = parseAttendanceType(dto.getType());
 
+
         Optional<AttendanceRecord> lastValid =
                 attendanceRepository.findTopByEmployeeEmployeeIdAndStatusOrderByEventTimeDesc(
                         employee.getEmployeeId(),
@@ -91,6 +92,13 @@ public class AttendanceServiceImpl implements AttendanceService {
                 : VerificationMethod.NONE;
 
         LocalDateTime now = LocalDateTime.now();
+        LocalTime nowTime = now.toLocalTime();
+
+        LocalTime latestAllowedCheckIn = shift.getEndTime().plusMinutes(30);
+
+        if (type == AttendanceType.IN && nowTime.isAfter(latestAllowedCheckIn)) {
+            throw new BadRequestException("Too late to check in for this shift");
+        }
 
         PunchEvaluation evaluation = evaluatePunch(type, shift, now);
 
