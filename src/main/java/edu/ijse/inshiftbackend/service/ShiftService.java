@@ -1,8 +1,9 @@
 package edu.ijse.inshiftbackend.service;
 
+import edu.ijse.inshiftbackend.dto.ShiftDTO;
 import edu.ijse.inshiftbackend.entity.Shift;
 
 public interface ShiftService {
-    Shift getDefaultShift();
-    //Shift saveOrUpdateDefaultShift(ShiftDTO dto);
+    ShiftDTO getDefaultShift();
+    ShiftDTO saveOrUpdateDefaultShift(ShiftDTO dto);
 }

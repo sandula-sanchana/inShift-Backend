@@ -19,6 +19,7 @@ import edu.ijse.inshiftbackend.exception.custom.ResourceNotFoundException;
 import edu.ijse.inshiftbackend.repository.AttendanceAuditRepository;
 import edu.ijse.inshiftbackend.repository.AttendanceRecordRepository;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
+import edu.ijse.inshiftbackend.repository.ShiftRepository;
 import edu.ijse.inshiftbackend.service.AttendanceService;
 import edu.ijse.inshiftbackend.service.AttendanceSummaryService;
 import edu.ijse.inshiftbackend.util.GeoUtil;
@@ -40,6 +41,7 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final AttendanceRecordRepository attendanceRepository;
     private final AttendanceAuditRepository auditRepository;
     private final EmployeeRepository employeeRepository;
+    private final ShiftRepository shiftRepository;
     private final AttendanceSummaryService attendanceSummaryService;
 
     @Override
@@ -53,14 +55,7 @@ public class AttendanceServiceImpl implements AttendanceService {
             throw new BadRequestException("Inactive employee cannot mark attendance");
         }
 
-        Shift shift = employee.getShift();
-        if (shift == null) {
-            throw new BadRequestException("Employee shift not assigned");
-        }
-
-        if (Boolean.FALSE.equals(shift.getActive())) {
-            throw new BadRequestException("Assigned shift is inactive");
-        }
+        Shift shift = resolveShift(employee);
 
         AttendanceType type = parseAttendanceType(dto.getType());
 
@@ -71,7 +66,9 @@ public class AttendanceServiceImpl implements AttendanceService {
                 );
 
         Optional<AttendanceRecord> lastAny =
-                attendanceRepository.findTopByEmployeeEmployeeIdOrderByEventTimeDesc(employee.getEmployeeId());
+                attendanceRepository.findTopByEmployeeEmployeeIdOrderByEventTimeDesc(
+                        employee.getEmployeeId()
+                );
 
         validateWebRules(dto, source);
 
@@ -119,14 +116,17 @@ public class AttendanceServiceImpl implements AttendanceService {
 
         AttendanceRecord saved = attendanceRepository.save(record);
 
-        attendanceSummaryService.generateDailySummary(employee.getEmployeeId(), now.toLocalDate()); // generate summery after each punch
+        attendanceSummaryService.generateDailySummary(
+                employee.getEmployeeId(),
+                now.toLocalDate()
+        );
 
         AttendanceAudit audit = AttendanceAudit.builder()
                 .attendance(saved)
                 .action(AuditAction.CREATE)
                 .doneByRole("EMPLOYEE")
                 .doneByUserId(employee.getEmployeeId())
-                .note(buildAuditNote(type, source, status, evaluation))
+                .note(buildAuditNote(type, source, status, evaluation, shift))
                 .build();
 
         auditRepository.save(audit);
@@ -217,6 +217,17 @@ public class AttendanceServiceImpl implements AttendanceService {
         return mapToResponse(saved);
     }
 
+    private Shift resolveShift(Employee employee) {
+        Shift employeeShift = employee.getShift();
+
+        if (employeeShift != null && Boolean.TRUE.equals(employeeShift.getActive())) {
+            return employeeShift;
+        }
+
+        return shiftRepository.findByIsDefaultTrueAndActiveTrue()
+                .orElseThrow(() -> new BadRequestException("No active default shift configured"));
+    }
+
     private AttendanceType parseAttendanceType(String typeStr) {
         try {
             return AttendanceType.valueOf(typeStr.trim().toUpperCase(Locale.ROOT));
@@ -267,9 +278,11 @@ public class AttendanceServiceImpl implements AttendanceService {
     ) {
         if (type == AttendanceType.OUT && lastAny.isPresent()) {
             AttendanceRecord last = lastAny.get();
+
             if (last.getType() == AttendanceType.IN && last.getStatus() == AttendanceStatus.PENDING) {
                 throw new BadRequestException("Your last check-in is pending approval. You cannot check out yet.");
             }
+
             if (last.getType() == AttendanceType.IN && last.getStatus() == AttendanceStatus.REJECTED) {
                 throw new BadRequestException("Your last check-in was rejected. Please submit a valid check-in first.");
             }
@@ -292,8 +305,12 @@ public class AttendanceServiceImpl implements AttendanceService {
         LocalTime nowTime = eventTime.toLocalTime();
 
         if (type == AttendanceType.IN) {
-            LocalTime earliestAllowed = shift.getStartTime().minusMinutes(shift.getEarlyCheckInMinutes());
-            LocalTime graceEnd = shift.getStartTime().plusMinutes(shift.getGraceMinutes());
+            LocalTime earliestAllowed = shift.getStartTime().minusMinutes(
+                    safeInt(shift.getEarlyCheckInMinutes())
+            );
+            LocalTime graceEnd = shift.getStartTime().plusMinutes(
+                    safeInt(shift.getGraceMinutes())
+            );
 
             if (nowTime.isBefore(earliestAllowed)) {
                 throw new BadRequestException(
@@ -309,30 +326,42 @@ public class AttendanceServiceImpl implements AttendanceService {
             return new PunchEvaluation(AttendanceMark.ON_TIME, 0, 0, 0);
         }
 
-        LocalTime overtimeStart = shift.getEndTime().plusMinutes(shift.getOvertimeAfterMinutes());
+        LocalTime endTime = shift.getEndTime();
+        LocalTime earlyLeaveThreshold = endTime.minusMinutes(
+                safeInt(shift.getEarlyLeaveGraceMinutes())
+        );
+        LocalTime overtimeStart = endTime.plusMinutes(
+                safeInt(shift.getOvertimeAfterMinutes())
+        );
 
-        if (nowTime.isBefore(shift.getEndTime())) {
-            int earlyLeaveMinutes = (int) Duration.between(nowTime, shift.getEndTime()).toMinutes();
+        if (nowTime.isBefore(earlyLeaveThreshold)) {
+            int earlyLeaveMinutes = (int) Duration.between(nowTime, endTime).toMinutes();
             return new PunchEvaluation(AttendanceMark.EARLY_LEAVE, 0, earlyLeaveMinutes, 0);
         }
 
         if (nowTime.isAfter(overtimeStart)) {
-            int overtimeMinutes = (int) Duration.between(shift.getEndTime(), nowTime).toMinutes();
+            int overtimeMinutes = (int) Duration.between(endTime, nowTime).toMinutes();
             return new PunchEvaluation(AttendanceMark.OVERTIME, 0, 0, overtimeMinutes);
         }
 
         return new PunchEvaluation(AttendanceMark.NORMAL, 0, 0, 0);
     }
 
+    private int safeInt(Integer value) {
+        return value == null ? 0 : value;
+    }
+
     private String buildAuditNote(
             AttendanceType type,
             AttendanceSource source,
             AttendanceStatus status,
-            PunchEvaluation evaluation
+            PunchEvaluation evaluation,
+            Shift shift
     ) {
         return "Punch " + type +
                 " via " + source +
                 " saved as " + status +
+                " using shift=" + (shift != null ? shift.getShiftName() : "N/A") +
                 " [" + evaluation.mark() +
                 ", late=" + evaluation.lateMinutes() +
                 ", earlyLeave=" + evaluation.earlyLeaveMinutes() +
@@ -363,7 +392,11 @@ public class AttendanceServiceImpl implements AttendanceService {
                 .build();
     }
 
-    private record PunchEvaluation(AttendanceMark mark, int lateMinutes, int earlyLeaveMinutes, int overtimeMinutes) {
-
+    private record PunchEvaluation(
+            AttendanceMark mark,
+            int lateMinutes,
+            int earlyLeaveMinutes,
+            int overtimeMinutes
+    ) {
     }
 }

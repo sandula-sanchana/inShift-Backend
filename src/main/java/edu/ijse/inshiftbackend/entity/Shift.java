@@ -27,18 +27,24 @@ public class Shift {
     @Column(nullable = false)
     private LocalTime endTime;
 
-    // how many minutes after start is still considered on-time
     @Column(nullable = false)
     private Integer graceMinutes;
 
-    // how early user can check in before shift start
     @Column(nullable = false)
     private Integer earlyCheckInMinutes;
 
-    // overtime only counted after this many minutes past shift end
+    @Column(nullable = false)
+    private Integer earlyLeaveGraceMinutes;
+
     @Column(nullable = false)
     private Integer overtimeAfterMinutes;
 
     @Column(nullable = false)
+    private Integer breakMinutes;
+
+    @Column(nullable = false)
     private Boolean active;
+
+    @Column(nullable = false)
+    private Boolean isDefault;
 }
