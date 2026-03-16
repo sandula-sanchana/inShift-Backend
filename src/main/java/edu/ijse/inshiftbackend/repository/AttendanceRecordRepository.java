@@ -31,6 +31,14 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
             LocalDateTime end
     );
 
+    List<AttendanceRecord> findAllByEmployeeEmployeeIdAndTypeAndStatusAndEventTimeBetweenOrderByEventTimeAsc(
+            Long employeeId,
+            AttendanceType type,
+            AttendanceStatus status,
+            LocalDateTime start,
+            LocalDateTime end
+    );
+
 
     long countByStatusAndEventTimeBetween(AttendanceStatus status, LocalDateTime start, LocalDateTime end);
 
@@ -41,4 +49,6 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
             LocalDateTime start,
             LocalDateTime end
     );
+
+
 }

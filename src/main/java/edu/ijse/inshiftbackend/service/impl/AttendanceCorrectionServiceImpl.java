@@ -7,6 +7,7 @@ import edu.ijse.inshiftbackend.entity.AttendanceAudit;
 import edu.ijse.inshiftbackend.entity.AttendanceCorrectionRequest;
 import edu.ijse.inshiftbackend.entity.AttendanceRecord;
 import edu.ijse.inshiftbackend.entity.Employee;
+import edu.ijse.inshiftbackend.entity.Shift;
 import edu.ijse.inshiftbackend.entity.enums.AttendanceMark;
 import edu.ijse.inshiftbackend.entity.enums.AttendanceSource;
 import edu.ijse.inshiftbackend.entity.enums.AttendanceStatus;
@@ -21,14 +22,17 @@ import edu.ijse.inshiftbackend.repository.AttendanceAuditRepository;
 import edu.ijse.inshiftbackend.repository.AttendanceCorrectionRequestRepository;
 import edu.ijse.inshiftbackend.repository.AttendanceRecordRepository;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
+import edu.ijse.inshiftbackend.repository.ShiftRepository;
 import edu.ijse.inshiftbackend.service.AttendanceCorrectionService;
 import edu.ijse.inshiftbackend.service.AttendanceSummaryService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Locale;
 
@@ -40,6 +44,7 @@ public class AttendanceCorrectionServiceImpl implements AttendanceCorrectionServ
     private final AttendanceRecordRepository attendanceRecordRepository;
     private final AttendanceAuditRepository attendanceAuditRepository;
     private final EmployeeRepository employeeRepository;
+    private final ShiftRepository shiftRepository;
     private final AttendanceSummaryService attendanceSummaryService;
 
     @Override
@@ -53,7 +58,7 @@ public class AttendanceCorrectionServiceImpl implements AttendanceCorrectionServ
             throw new BadRequestException("Inactive employee cannot submit correction requests");
         }
 
-        validateSubmitRequest(dto);
+        validateSubmitRequest(dto, employee);
 
         AttendanceCorrectionRequest request = AttendanceCorrectionRequest.builder()
                 .employee(employee)
@@ -120,6 +125,12 @@ public class AttendanceCorrectionServiceImpl implements AttendanceCorrectionServ
                     attendanceDate
             );
 
+            ensureCheckInBeforeAnyExistingOut(
+                    employee.getEmployeeId(),
+                    request.getRequestedCheckInTime(),
+                    attendanceDate
+            );
+
             createAdminAttendanceRecord(
                     employee,
                     AttendanceType.IN,
@@ -136,6 +147,11 @@ public class AttendanceCorrectionServiceImpl implements AttendanceCorrectionServ
             ensureNoDuplicateAttendance(
                     employee.getEmployeeId(),
                     AttendanceType.OUT,
+                    attendanceDate
+            );
+
+            ensureExistingValidCheckIn(
+                    employee.getEmployeeId(),
                     attendanceDate
             );
 
@@ -189,7 +205,7 @@ public class AttendanceCorrectionServiceImpl implements AttendanceCorrectionServ
         return mapToResponse(saved);
     }
 
-    private void validateSubmitRequest(AttendanceCorrectionRequestDTO dto) {
+    private void validateSubmitRequest(AttendanceCorrectionRequestDTO dto, Employee employee) {
         if (dto == null) {
             throw new BadRequestException("Correction request is required");
         }
@@ -198,12 +214,30 @@ public class AttendanceCorrectionServiceImpl implements AttendanceCorrectionServ
             throw new BadRequestException("Attendance date is required");
         }
 
+        if (dto.getAttendanceDate().isAfter(LocalDate.now())) {
+            throw new BadRequestException("Future attendance date is not allowed");
+        }
+
         if (dto.getType() == null || dto.getType().trim().isEmpty()) {
             throw new BadRequestException("Correction type is required");
         }
 
         if (dto.getReason() == null || dto.getReason().trim().isEmpty()) {
             throw new BadRequestException("Reason is required");
+        }
+
+        CorrectionType type = parseCorrectionType(dto.getType());
+
+        boolean alreadyPending = correctionRepository
+                .existsByEmployeeEmployeeIdAndAttendanceDateAndTypeAndStatus(
+                        employee.getEmployeeId(),
+                        dto.getAttendanceDate(),
+                        type,
+                        CorrectionStatus.PENDING
+                );
+
+        if (alreadyPending) {
+            throw new BadRequestException("A pending correction request already exists for this date and type");
         }
     }
 
@@ -239,6 +273,105 @@ public class AttendanceCorrectionServiceImpl implements AttendanceCorrectionServ
         }
     }
 
+    private void ensureExistingValidCheckIn(Long employeeId, LocalDate attendanceDate) {
+        LocalDateTime dayStart = attendanceDate.atStartOfDay();
+        LocalDateTime dayEnd = attendanceDate.plusDays(1).atStartOfDay().minusNanos(1);
+
+        boolean hasValidIn =
+                attendanceRecordRepository.existsByEmployeeEmployeeIdAndTypeAndStatusAndEventTimeBetween(
+                        employeeId,
+                        AttendanceType.IN,
+                        AttendanceStatus.VALID,
+                        dayStart,
+                        dayEnd
+                );
+
+        if (!hasValidIn) {
+            throw new BadRequestException("Cannot approve MISSED_CHECK_OUT without a valid check-in on that date");
+        }
+    }
+
+    private void ensureCheckInBeforeAnyExistingOut(
+            Long employeeId,
+            LocalDateTime requestedCheckInTime,
+            LocalDate attendanceDate
+    ) {
+        LocalDateTime dayStart = attendanceDate.atStartOfDay();
+        LocalDateTime dayEnd = attendanceDate.plusDays(1).atStartOfDay().minusNanos(1);
+
+        List<AttendanceRecord> validOuts =
+                attendanceRecordRepository.findAllByEmployeeEmployeeIdAndTypeAndStatusAndEventTimeBetweenOrderByEventTimeAsc(
+                        employeeId,
+                        AttendanceType.OUT,
+                        AttendanceStatus.VALID,
+                        dayStart,
+                        dayEnd
+                );
+
+        if (!validOuts.isEmpty()) {
+            LocalDateTime earliestOut = validOuts.get(0).getEventTime();
+            if (requestedCheckInTime.isAfter(earliestOut)) {
+                throw new BadRequestException("Requested check-in time cannot be after an existing valid check-out");
+            }
+        }
+    }
+
+    private Shift resolveShift(Employee employee) {
+        Shift employeeShift = employee.getShift();
+
+        if (employeeShift != null && Boolean.TRUE.equals(employeeShift.getActive())) {
+            return employeeShift;
+        }
+
+        return shiftRepository.findByIsDefaultTrueAndActiveTrue()
+                .orElseThrow(() -> new BadRequestException("No active default shift configured"));
+    }
+
+    private CorrectionPunchEvaluation evaluateCorrectionPunch(
+            AttendanceType attendanceType,
+            Shift shift,
+            LocalDateTime eventTime
+    ) {
+        LocalTime nowTime = eventTime.toLocalTime();
+
+        if (attendanceType == AttendanceType.IN) {
+            LocalTime latestAllowedCheckIn = shift.getEndTime().plusMinutes(30);
+            if (nowTime.isAfter(latestAllowedCheckIn)) {
+                throw new BadRequestException("Requested check-in time is too late for this shift");
+            }
+
+            LocalTime earliestAllowed = shift.getStartTime().minusMinutes(safeInt(shift.getEarlyCheckInMinutes()));
+            LocalTime graceEnd = shift.getStartTime().plusMinutes(safeInt(shift.getGraceMinutes()));
+
+            if (nowTime.isBefore(earliestAllowed)) {
+                throw new BadRequestException("Requested check-in time is earlier than allowed for this shift");
+            }
+
+            if (nowTime.isAfter(graceEnd)) {
+                int lateMinutes = (int) Duration.between(shift.getStartTime(), nowTime).toMinutes();
+                return new CorrectionPunchEvaluation(AttendanceMark.LATE, lateMinutes, 0, 0);
+            }
+
+            return new CorrectionPunchEvaluation(AttendanceMark.ON_TIME, 0, 0, 0);
+        }
+
+        LocalTime endTime = shift.getEndTime();
+        LocalTime earlyLeaveThreshold = endTime.minusMinutes(safeInt(shift.getEarlyLeaveGraceMinutes()));
+        LocalTime overtimeStart = endTime.plusMinutes(safeInt(shift.getOvertimeAfterMinutes()));
+
+        if (nowTime.isBefore(earlyLeaveThreshold)) {
+            int earlyLeaveMinutes = (int) Duration.between(nowTime, endTime).toMinutes();
+            return new CorrectionPunchEvaluation(AttendanceMark.EARLY_LEAVE, 0, earlyLeaveMinutes, 0);
+        }
+
+        if (nowTime.isAfter(overtimeStart)) {
+            int overtimeMinutes = (int) Duration.between(endTime, nowTime).toMinutes();
+            return new CorrectionPunchEvaluation(AttendanceMark.OVERTIME, 0, 0, overtimeMinutes);
+        }
+
+        return new CorrectionPunchEvaluation(AttendanceMark.NORMAL, 0, 0, 0);
+    }
+
     private void createAdminAttendanceRecord(
             Employee employee,
             AttendanceType attendanceType,
@@ -246,6 +379,9 @@ public class AttendanceCorrectionServiceImpl implements AttendanceCorrectionServ
             String reason,
             Employee admin
     ) {
+        Shift shift = resolveShift(employee);
+        CorrectionPunchEvaluation evaluation = evaluateCorrectionPunch(attendanceType, shift, eventTime);
+
         AttendanceRecord record = AttendanceRecord.builder()
                 .employee(employee)
                 .branch(employee.getBranch())
@@ -253,10 +389,10 @@ public class AttendanceCorrectionServiceImpl implements AttendanceCorrectionServ
                 .source(AttendanceSource.WEB)
                 .status(AttendanceStatus.VALID)
                 .eventTime(eventTime)
-                .attendanceMark(AttendanceMark.NORMAL)
-                .lateMinutes(0)
-                .earlyLeaveMinutes(0)
-                .overtimeMinutes(0)
+                .attendanceMark(evaluation.mark())
+                .lateMinutes(evaluation.lateMinutes())
+                .earlyLeaveMinutes(evaluation.earlyLeaveMinutes())
+                .overtimeMinutes(evaluation.overtimeMinutes())
                 .reason(reason)
                 .verified(true)
                 .verificationMethod(VerificationMethod.ADMIN)
@@ -270,10 +406,20 @@ public class AttendanceCorrectionServiceImpl implements AttendanceCorrectionServ
                 .action(AuditAction.CREATE)
                 .doneByRole("ADMIN")
                 .doneByUserId(admin.getEmployeeId())
-                .note("Attendance record created from approved correction request")
+                .note(
+                        "Attendance record created from approved correction request " +
+                                "[" + evaluation.mark() +
+                                ", late=" + evaluation.lateMinutes() +
+                                ", earlyLeave=" + evaluation.earlyLeaveMinutes() +
+                                ", overtime=" + evaluation.overtimeMinutes() + "]"
+                )
                 .build();
 
         attendanceAuditRepository.save(audit);
+    }
+
+    private int safeInt(Integer value) {
+        return value == null ? 0 : value;
     }
 
     private AttendanceCorrectionResponseDTO mapToResponse(AttendanceCorrectionRequest request) {
@@ -291,5 +437,13 @@ public class AttendanceCorrectionServiceImpl implements AttendanceCorrectionServ
                 .decidedAt(request.getDecidedAt())
                 .createdAt(request.getCreatedAt())
                 .build();
+    }
+
+    private record CorrectionPunchEvaluation(
+            AttendanceMark mark,
+            int lateMinutes,
+            int earlyLeaveMinutes,
+            int overtimeMinutes
+    ) {
     }
 }
