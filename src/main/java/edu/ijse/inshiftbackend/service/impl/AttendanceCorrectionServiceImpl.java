@@ -119,12 +119,7 @@ public class AttendanceCorrectionServiceImpl implements AttendanceCorrectionServ
                 throw new BadRequestException("Requested check-in time is required to approve MISSED_CHECK_IN");
             }
 
-            ensureNoDuplicateAttendance(
-                    employee.getEmployeeId(),
-                    AttendanceType.IN,
-                    attendanceDate
-            );
-
+            ensureNoDuplicateAttendance(employee.getEmployeeId(), AttendanceType.IN, attendanceDate);
             ensureCheckInBeforeAnyExistingOut(
                     employee.getEmployeeId(),
                     request.getRequestedCheckInTime(),
@@ -144,16 +139,8 @@ public class AttendanceCorrectionServiceImpl implements AttendanceCorrectionServ
                 throw new BadRequestException("Requested check-out time is required to approve MISSED_CHECK_OUT");
             }
 
-            ensureNoDuplicateAttendance(
-                    employee.getEmployeeId(),
-                    AttendanceType.OUT,
-                    attendanceDate
-            );
-
-            ensureExistingValidCheckIn(
-                    employee.getEmployeeId(),
-                    attendanceDate
-            );
+            ensureNoDuplicateAttendance(employee.getEmployeeId(), AttendanceType.OUT, attendanceDate);
+            ensureExistingValidCheckIn(employee.getEmployeeId(), attendanceDate);
 
             createAdminAttendanceRecord(
                     employee,
@@ -328,48 +315,79 @@ public class AttendanceCorrectionServiceImpl implements AttendanceCorrectionServ
     }
 
     private CorrectionPunchEvaluation evaluateCorrectionPunch(
+            Employee employee,
             AttendanceType attendanceType,
             Shift shift,
             LocalDateTime eventTime
     ) {
-        LocalTime nowTime = eventTime.toLocalTime();
+        LocalTime punchTime = eventTime.toLocalTime();
 
         if (attendanceType == AttendanceType.IN) {
             LocalTime latestAllowedCheckIn = shift.getEndTime().plusMinutes(30);
-            if (nowTime.isAfter(latestAllowedCheckIn)) {
+            if (punchTime.isAfter(latestAllowedCheckIn)) {
                 throw new BadRequestException("Requested check-in time is too late for this shift");
             }
 
             LocalTime earliestAllowed = shift.getStartTime().minusMinutes(safeInt(shift.getEarlyCheckInMinutes()));
             LocalTime graceEnd = shift.getStartTime().plusMinutes(safeInt(shift.getGraceMinutes()));
 
-            if (nowTime.isBefore(earliestAllowed)) {
+            if (punchTime.isBefore(earliestAllowed)) {
                 throw new BadRequestException("Requested check-in time is earlier than allowed for this shift");
             }
 
-            if (nowTime.isAfter(graceEnd)) {
-                int lateMinutes = (int) Duration.between(shift.getStartTime(), nowTime).toMinutes();
+            if (punchTime.isAfter(graceEnd)) {
+                int lateMinutes = (int) Duration.between(shift.getStartTime(), punchTime).toMinutes();
                 return new CorrectionPunchEvaluation(AttendanceMark.LATE, lateMinutes, 0, 0);
             }
 
             return new CorrectionPunchEvaluation(AttendanceMark.ON_TIME, 0, 0, 0);
         }
 
+        // OUT evaluation
         LocalTime endTime = shift.getEndTime();
         LocalTime earlyLeaveThreshold = endTime.minusMinutes(safeInt(shift.getEarlyLeaveGraceMinutes()));
-        LocalTime overtimeStart = endTime.plusMinutes(safeInt(shift.getOvertimeAfterMinutes()));
 
-        if (nowTime.isBefore(earlyLeaveThreshold)) {
-            int earlyLeaveMinutes = (int) Duration.between(nowTime, endTime).toMinutes();
+        if (punchTime.isBefore(earlyLeaveThreshold)) {
+            int earlyLeaveMinutes = (int) Duration.between(punchTime, endTime).toMinutes();
             return new CorrectionPunchEvaluation(AttendanceMark.EARLY_LEAVE, 0, earlyLeaveMinutes, 0);
         }
 
-        if (nowTime.isAfter(overtimeStart)) {
-            int overtimeMinutes = (int) Duration.between(endTime, nowTime).toMinutes();
-            return new CorrectionPunchEvaluation(AttendanceMark.OVERTIME, 0, 0, overtimeMinutes);
+        AttendanceRecord firstValidIn = findFirstValidInForDate(employee.getEmployeeId(), eventTime.toLocalDate());
+        if (firstValidIn == null) {
+            throw new BadRequestException("Cannot evaluate corrected check-out without a valid check-in");
+        }
+
+        long workedMinutes = Duration.between(firstValidIn.getEventTime(), eventTime).toMinutes();
+        long requiredShiftMinutes =
+                Duration.between(shift.getStartTime(), shift.getEndTime()).toMinutes() - safeInt(shift.getBreakMinutes());
+
+        if (requiredShiftMinutes < 0) {
+            requiredShiftMinutes = 0;
+        }
+
+        long overtimeMinutes = Math.max(0, workedMinutes - requiredShiftMinutes);
+
+        if (overtimeMinutes > 0) {
+            return new CorrectionPunchEvaluation(AttendanceMark.OVERTIME, 0, 0, (int) overtimeMinutes);
         }
 
         return new CorrectionPunchEvaluation(AttendanceMark.NORMAL, 0, 0, 0);
+    }
+
+    private AttendanceRecord findFirstValidInForDate(Long employeeId, LocalDate attendanceDate) {
+        LocalDateTime dayStart = attendanceDate.atStartOfDay();
+        LocalDateTime dayEnd = attendanceDate.plusDays(1).atStartOfDay().minusNanos(1);
+
+        List<AttendanceRecord> validIns =
+                attendanceRecordRepository.findAllByEmployeeEmployeeIdAndTypeAndStatusAndEventTimeBetweenOrderByEventTimeAsc(
+                        employeeId,
+                        AttendanceType.IN,
+                        AttendanceStatus.VALID,
+                        dayStart,
+                        dayEnd
+                );
+
+        return validIns.isEmpty() ? null : validIns.get(0);
     }
 
     private void createAdminAttendanceRecord(
@@ -380,7 +398,7 @@ public class AttendanceCorrectionServiceImpl implements AttendanceCorrectionServ
             Employee admin
     ) {
         Shift shift = resolveShift(employee);
-        CorrectionPunchEvaluation evaluation = evaluateCorrectionPunch(attendanceType, shift, eventTime);
+        CorrectionPunchEvaluation evaluation = evaluateCorrectionPunch(employee, attendanceType, shift, eventTime);
 
         AttendanceRecord record = AttendanceRecord.builder()
                 .employee(employee)
