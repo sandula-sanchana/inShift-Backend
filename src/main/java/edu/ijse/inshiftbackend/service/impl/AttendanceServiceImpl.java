@@ -29,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
@@ -58,9 +59,7 @@ public class AttendanceServiceImpl implements AttendanceService {
         }
 
         Shift shift = resolveShift(employee);
-
         AttendanceType type = parseAttendanceType(dto.getType());
-
 
         Optional<AttendanceRecord> lastValid =
                 attendanceRepository.findTopByEmployeeEmployeeIdAndStatusOrderByEventTimeDesc(
@@ -126,12 +125,7 @@ public class AttendanceServiceImpl implements AttendanceService {
 
         AttendanceRecord saved = attendanceRepository.save(record);
 
-        attendanceSummaryService.generateDailySummary(
-                employee.getEmployeeId(),
-                now.toLocalDate()
-        );
-
-        attendanceIntelligenceService.evaluateDay(employee.getEmployeeId(), now.toLocalDate());
+        refreshDerivedAttendanceState(saved);
 
         AttendanceAudit audit = AttendanceAudit.builder()
                 .attendance(saved)
@@ -177,6 +171,8 @@ public class AttendanceServiceImpl implements AttendanceService {
 
         AttendanceRecord saved = attendanceRepository.save(record);
 
+        refreshDerivedAttendanceState(saved);
+
         AttendanceAudit audit = AttendanceAudit.builder()
                 .attendance(saved)
                 .action(AuditAction.APPROVE)
@@ -216,6 +212,8 @@ public class AttendanceServiceImpl implements AttendanceService {
 
         AttendanceRecord saved = attendanceRepository.save(record);
 
+        refreshDerivedAttendanceState(saved);
+
         AttendanceAudit audit = AttendanceAudit.builder()
                 .attendance(saved)
                 .action(AuditAction.REJECT)
@@ -227,6 +225,14 @@ public class AttendanceServiceImpl implements AttendanceService {
         auditRepository.save(audit);
 
         return mapToResponse(saved);
+    }
+
+    private void refreshDerivedAttendanceState(AttendanceRecord record) {
+        LocalDate attendanceDate = record.getEventTime().toLocalDate();
+        Long employeeId = record.getEmployee().getEmployeeId();
+
+        attendanceSummaryService.generateDailySummary(employeeId, attendanceDate);
+        attendanceIntelligenceService.evaluateDay(employeeId, attendanceDate);
     }
 
     private Shift resolveShift(Employee employee) {
