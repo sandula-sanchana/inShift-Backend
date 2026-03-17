@@ -1,5 +1,6 @@
 package edu.ijse.inshiftbackend.service;
 
+import edu.ijse.inshiftbackend.dto.response.AttendanceIntelligenceOverviewDTO;
 import edu.ijse.inshiftbackend.entity.AttendanceFlag;
 
 import java.time.LocalDate;
@@ -10,4 +11,6 @@ public interface AttendanceIntelligenceService {
     void evaluateDay(Long employeeId, LocalDate attendanceDate);
 
     List<AttendanceFlag> getFlagsForEmployeeDay(Long employeeId, LocalDate attendanceDate);
+
+    List<AttendanceIntelligenceOverviewDTO> getDailyOverview(LocalDate date);
 }

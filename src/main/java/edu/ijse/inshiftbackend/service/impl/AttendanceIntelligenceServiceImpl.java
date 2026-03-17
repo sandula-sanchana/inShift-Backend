@@ -1,5 +1,7 @@
 package edu.ijse.inshiftbackend.service.impl;
 
+import edu.ijse.inshiftbackend.dto.response.AttendanceFlagDTO;
+import edu.ijse.inshiftbackend.dto.response.AttendanceIntelligenceOverviewDTO;
 import edu.ijse.inshiftbackend.entity.AttendanceFlag;
 import edu.ijse.inshiftbackend.entity.AttendanceRecord;
 import edu.ijse.inshiftbackend.entity.AttendanceRiskScore;
@@ -64,6 +66,42 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
                 employeeId,
                 attendanceDate
         );
+    }
+
+    @Override
+    public List<AttendanceIntelligenceOverviewDTO> getDailyOverview(LocalDate date) {
+        return riskScoreRepository.findAllByAttendanceDateOrderByRiskScoreDesc(date)
+                .stream()
+                .map(score -> {
+                    List<AttendanceFlagDTO> flags = attendanceFlagRepository
+                            .findAllByEmployeeEmployeeIdAndAttendanceDateOrderByDetectedAtDesc(
+                                    score.getEmployee().getEmployeeId(),
+                                    date
+                            )
+                            .stream()
+                            .map(flag -> AttendanceFlagDTO.builder()
+                                    .id(flag.getId())
+                                    .flagType(flag.getFlagType().name())
+                                    .severity(flag.getSeverity().name())
+                                    .scoreImpact(flag.getScoreImpact())
+                                    .message(flag.getMessage())
+                                    .resolved(flag.getResolved())
+                                    .build())
+                            .toList();
+
+                    return AttendanceIntelligenceOverviewDTO.builder()
+                            .employeeId(score.getEmployee().getEmployeeId())
+                            .employeeName(score.getEmployee().getFullName())
+                            .attendanceDate(score.getAttendanceDate())
+                            .riskScore(score.getRiskScore())
+                            .trustScore(score.getTrustScore())
+                            .totalFlags(score.getTotalFlags())
+                            .requiresReview(score.getRequiresReview())
+                            .highRisk(score.getHighRisk())
+                            .flags(flags)
+                            .build();
+                })
+                .toList();
     }
 
     private List<AttendanceRecord> findValidPunches(Long employeeId, LocalDate attendanceDate, AttendanceType type) {

@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -13,4 +14,6 @@ public interface AttendanceRiskScoreRepository extends JpaRepository<AttendanceR
     Optional<AttendanceRiskScore> findByEmployeeEmployeeIdAndAttendanceDate(
             Long employeeId, LocalDate attendanceDate
     );
+
+    List<AttendanceRiskScore> findAllByAttendanceDateOrderByRiskScoreDesc(LocalDate attendanceDate);
 }
