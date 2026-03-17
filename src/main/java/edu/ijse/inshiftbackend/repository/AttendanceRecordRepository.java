@@ -50,5 +50,12 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
             LocalDateTime end
     );
 
+    long countByEmployeeEmployeeIdAndSourceAndEventTimeBetween(
+            Long employeeId,
+            edu.ijse.inshiftbackend.entity.enums.AttendanceSource source,
+            LocalDateTime start,
+            LocalDateTime end
+    );
+
 
 }

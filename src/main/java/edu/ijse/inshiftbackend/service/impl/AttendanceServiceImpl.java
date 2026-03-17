@@ -20,6 +20,7 @@ import edu.ijse.inshiftbackend.repository.AttendanceAuditRepository;
 import edu.ijse.inshiftbackend.repository.AttendanceRecordRepository;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
 import edu.ijse.inshiftbackend.repository.ShiftRepository;
+import edu.ijse.inshiftbackend.service.AttendanceIntelligenceService;
 import edu.ijse.inshiftbackend.service.AttendanceService;
 import edu.ijse.inshiftbackend.service.AttendanceSummaryService;
 import edu.ijse.inshiftbackend.util.GeoUtil;
@@ -43,6 +44,7 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final EmployeeRepository employeeRepository;
     private final ShiftRepository shiftRepository;
     private final AttendanceSummaryService attendanceSummaryService;
+    private final AttendanceIntelligenceService attendanceIntelligenceService;
 
     @Override
     @Transactional
@@ -128,6 +130,8 @@ public class AttendanceServiceImpl implements AttendanceService {
                 employee.getEmployeeId(),
                 now.toLocalDate()
         );
+
+        attendanceIntelligenceService.evaluateDay(employee.getEmployeeId(), now.toLocalDate());
 
         AttendanceAudit audit = AttendanceAudit.builder()
                 .attendance(saved)

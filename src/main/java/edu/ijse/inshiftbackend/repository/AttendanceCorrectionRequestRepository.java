@@ -23,4 +23,6 @@ public interface AttendanceCorrectionRequestRepository
             CorrectionType type,
             CorrectionStatus status
     );
+
+    long countByEmployeeEmployeeIdAndCreatedAtAfter(Long employeeId, java.time.LocalDateTime after);
 }

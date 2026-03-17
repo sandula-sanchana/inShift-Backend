@@ -24,6 +24,7 @@ import edu.ijse.inshiftbackend.repository.AttendanceRecordRepository;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
 import edu.ijse.inshiftbackend.repository.ShiftRepository;
 import edu.ijse.inshiftbackend.service.AttendanceCorrectionService;
+import edu.ijse.inshiftbackend.service.AttendanceIntelligenceService;
 import edu.ijse.inshiftbackend.service.AttendanceSummaryService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +47,7 @@ public class AttendanceCorrectionServiceImpl implements AttendanceCorrectionServ
     private final EmployeeRepository employeeRepository;
     private final ShiftRepository shiftRepository;
     private final AttendanceSummaryService attendanceSummaryService;
+    private final AttendanceIntelligenceService attendanceIntelligenceService;
 
     @Override
     @Transactional
@@ -159,6 +161,8 @@ public class AttendanceCorrectionServiceImpl implements AttendanceCorrectionServ
         AttendanceCorrectionRequest saved = correctionRepository.save(request);
 
         attendanceSummaryService.generateDailySummary(employee.getEmployeeId(), attendanceDate);
+
+        attendanceIntelligenceService.evaluateDay(employee.getEmployeeId(), attendanceDate);
 
         return mapToResponse(saved);
     }
