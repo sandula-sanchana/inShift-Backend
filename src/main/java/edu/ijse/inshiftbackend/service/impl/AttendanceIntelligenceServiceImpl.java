@@ -5,11 +5,13 @@ import edu.ijse.inshiftbackend.dto.response.AttendanceIntelligenceOverviewDTO;
 import edu.ijse.inshiftbackend.entity.AttendanceFlag;
 import edu.ijse.inshiftbackend.entity.AttendanceRecord;
 import edu.ijse.inshiftbackend.entity.AttendanceRiskScore;
+import edu.ijse.inshiftbackend.entity.AttendanceRule;
 import edu.ijse.inshiftbackend.entity.Employee;
 import edu.ijse.inshiftbackend.entity.Shift;
 import edu.ijse.inshiftbackend.entity.enums.AttendanceFlagType;
-import edu.ijse.inshiftbackend.entity.enums.AttendanceSource;
 import edu.ijse.inshiftbackend.entity.enums.AttendanceMark;
+import edu.ijse.inshiftbackend.entity.enums.AttendanceRuleKey;
+import edu.ijse.inshiftbackend.entity.enums.AttendanceSource;
 import edu.ijse.inshiftbackend.entity.enums.AttendanceStatus;
 import edu.ijse.inshiftbackend.entity.enums.AttendanceType;
 import edu.ijse.inshiftbackend.entity.enums.RiskSeverity;
@@ -21,6 +23,7 @@ import edu.ijse.inshiftbackend.repository.AttendanceRiskScoreRepository;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
 import edu.ijse.inshiftbackend.repository.ShiftRepository;
 import edu.ijse.inshiftbackend.service.AttendanceIntelligenceService;
+import edu.ijse.inshiftbackend.service.AttendanceRuleService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -40,6 +43,7 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
     private final AttendanceFlagRepository attendanceFlagRepository;
     private final AttendanceRiskScoreRepository riskScoreRepository;
     private final ShiftRepository shiftRepository;
+    private final AttendanceRuleService attendanceRuleService;
 
     @Override
     @Transactional
@@ -135,6 +139,14 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
             List<AttendanceRecord> validIns,
             List<AttendanceRecord> validOuts
     ) {
+        AttendanceRule thresholdRule = attendanceRuleService.getRequiredRule(
+                AttendanceRuleKey.SHORT_WORK_DURATION_MINUTES
+        );
+        AttendanceRule scoreRule = attendanceRuleService.getRequiredRule(
+                AttendanceRuleKey.SHORT_WORK_DURATION_SCORE
+        );
+
+        if (!Boolean.TRUE.equals(thresholdRule.getEnabled())) return;
         if (validIns.isEmpty() || validOuts.isEmpty()) return;
 
         AttendanceRecord firstIn = validIns.get(0);
@@ -142,14 +154,14 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
 
         long workedMinutes = Duration.between(firstIn.getEventTime(), lastOut.getEventTime()).toMinutes();
 
-        if (workedMinutes < 60) {
+        if (workedMinutes < safeInt(thresholdRule.getThresholdValue())) {
             createFlagIfAbsent(
                     employee,
                     attendanceDate,
                     lastOut,
                     AttendanceFlagType.SHORT_WORK_DURATION,
-                    RiskSeverity.HIGH,
-                    30,
+                    defaultSeverity(scoreRule.getSeverity(), RiskSeverity.HIGH),
+                    safeInt(scoreRule.getScoreImpact()),
                     "Worked duration is too short: " + workedMinutes + " minutes"
             );
         }
@@ -162,6 +174,11 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
             List<AttendanceRecord> validIns,
             List<AttendanceRecord> validOuts
     ) {
+        AttendanceRule scoreRule = attendanceRuleService.getRequiredRule(
+                AttendanceRuleKey.INVALID_OT_ELIGIBILITY_SCORE
+        );
+
+        if (!Boolean.TRUE.equals(scoreRule.getEnabled())) return;
         if (validIns.isEmpty() || validOuts.isEmpty()) return;
 
         AttendanceRecord firstIn = validIns.get(0);
@@ -170,7 +187,8 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
         long workedMinutes = Duration.between(firstIn.getEventTime(), lastOut.getEventTime()).toMinutes();
 
         long requiredShiftMinutes =
-                Duration.between(shift.getStartTime(), shift.getEndTime()).toMinutes() - safeInt(shift.getBreakMinutes());
+                Duration.between(shift.getStartTime(), shift.getEndTime()).toMinutes()
+                        - safeInt(shift.getBreakMinutes());
 
         if (requiredShiftMinutes < 0) requiredShiftMinutes = 0;
 
@@ -184,8 +202,8 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
                     attendanceDate,
                     lastOut,
                     AttendanceFlagType.INVALID_OT_ELIGIBILITY,
-                    RiskSeverity.CRITICAL,
-                    50,
+                    defaultSeverity(scoreRule.getSeverity(), RiskSeverity.CRITICAL),
+                    safeInt(scoreRule.getScoreImpact()),
                     "Overtime detected without enough worked duration. Worked=" +
                             workedMinutes + " mins, required=" + requiredShiftMinutes + " mins"
             );
@@ -193,27 +211,54 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
     }
 
     private void checkTooManyCorrections(Employee employee, LocalDate attendanceDate) {
-        LocalDateTime after = LocalDateTime.now().minusDays(30);
+        AttendanceRule limitRule = attendanceRuleService.getRequiredRule(
+                AttendanceRuleKey.TOO_MANY_CORRECTIONS_LIMIT
+        );
+        AttendanceRule windowRule = attendanceRuleService.getRequiredRule(
+                AttendanceRuleKey.TOO_MANY_CORRECTIONS_WINDOW_DAYS
+        );
+        AttendanceRule scoreRule = attendanceRuleService.getRequiredRule(
+                AttendanceRuleKey.TOO_MANY_CORRECTIONS_SCORE
+        );
+
+        if (!Boolean.TRUE.equals(limitRule.getEnabled())) return;
+
+        LocalDateTime after = LocalDateTime.now().minusDays(safeInt(windowRule.getThresholdValue()));
+
         long correctionCount = correctionRepository.countByEmployeeEmployeeIdAndCreatedAtAfter(
                 employee.getEmployeeId(),
                 after
         );
 
-        if (correctionCount > 3) {
+        if (correctionCount > safeInt(limitRule.getThresholdValue())) {
             createFlagIfAbsent(
                     employee,
                     attendanceDate,
                     null,
                     AttendanceFlagType.TOO_MANY_CORRECTIONS,
-                    RiskSeverity.MEDIUM,
-                    15,
-                    "Too many correction requests in last 30 days: " + correctionCount
+                    defaultSeverity(scoreRule.getSeverity(), RiskSeverity.MEDIUM),
+                    safeInt(scoreRule.getScoreImpact()),
+                    "Too many correction requests in last " +
+                            safeInt(windowRule.getThresholdValue()) +
+                            " days: " + correctionCount
             );
         }
     }
 
     private void checkWebAttendanceDependency(Employee employee, LocalDate attendanceDate) {
-        LocalDateTime start = LocalDateTime.now().minusDays(14);
+        AttendanceRule limitRule = attendanceRuleService.getRequiredRule(
+                AttendanceRuleKey.WEB_ATTENDANCE_DEPENDENCY_LIMIT
+        );
+        AttendanceRule windowRule = attendanceRuleService.getRequiredRule(
+                AttendanceRuleKey.WEB_ATTENDANCE_DEPENDENCY_WINDOW_DAYS
+        );
+        AttendanceRule scoreRule = attendanceRuleService.getRequiredRule(
+                AttendanceRuleKey.WEB_ATTENDANCE_DEPENDENCY_SCORE
+        );
+
+        if (!Boolean.TRUE.equals(limitRule.getEnabled())) return;
+
+        LocalDateTime start = LocalDateTime.now().minusDays(safeInt(windowRule.getThresholdValue()));
         LocalDateTime end = LocalDateTime.now();
 
         long webCount = attendanceRecordRepository.countByEmployeeEmployeeIdAndSourceAndEventTimeBetween(
@@ -223,15 +268,17 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
                 end
         );
 
-        if (webCount > 3) {
+        if (webCount > safeInt(limitRule.getThresholdValue())) {
             createFlagIfAbsent(
                     employee,
                     attendanceDate,
                     null,
                     AttendanceFlagType.WEB_ATTENDANCE_DEPENDENCY,
-                    RiskSeverity.MEDIUM,
-                    15,
-                    "Too many web/manual attendance punches in last 14 days: " + webCount
+                    defaultSeverity(scoreRule.getSeverity(), RiskSeverity.MEDIUM),
+                    safeInt(scoreRule.getScoreImpact()),
+                    "Too many web/manual attendance punches in last " +
+                            safeInt(windowRule.getThresholdValue()) +
+                            " days: " + webCount
             );
         }
     }
@@ -285,6 +332,13 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
                 .filter(f -> Boolean.FALSE.equals(f.getResolved()))
                 .count();
 
+        AttendanceRule reviewRule = attendanceRuleService.getRequiredRule(
+                AttendanceRuleKey.REVIEW_TRUST_THRESHOLD
+        );
+        AttendanceRule highRiskRule = attendanceRuleService.getRequiredRule(
+                AttendanceRuleKey.HIGH_RISK_TRUST_THRESHOLD
+        );
+
         AttendanceRiskScore score = riskScoreRepository
                 .findByEmployeeEmployeeIdAndAttendanceDate(employee.getEmployeeId(), attendanceDate)
                 .orElse(
@@ -297,13 +351,17 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
         score.setRiskScore(riskScore);
         score.setTrustScore(trustScore);
         score.setTotalFlags(totalFlags);
-        score.setRequiresReview(trustScore < 60);
-        score.setHighRisk(trustScore < 40);
+        score.setRequiresReview(trustScore < safeInt(reviewRule.getThresholdValue()));
+        score.setHighRisk(trustScore < safeInt(highRiskRule.getThresholdValue()));
 
         riskScoreRepository.save(score);
     }
 
     private int safeInt(Integer value) {
         return value == null ? 0 : value;
+    }
+
+    private RiskSeverity defaultSeverity(RiskSeverity value, RiskSeverity fallback) {
+        return value == null ? fallback : value;
     }
 }
