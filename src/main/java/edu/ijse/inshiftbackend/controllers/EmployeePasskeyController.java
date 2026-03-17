@@ -1,10 +1,12 @@
 package edu.ijse.inshiftbackend.controllers;
 
 import edu.ijse.inshiftbackend.dto.PasskeyAssertionVerifyDTO;
+import edu.ijse.inshiftbackend.dto.PasskeyRegisterStartDTO;
 import edu.ijse.inshiftbackend.dto.PasskeyRegisterVerifyDTO;
 import edu.ijse.inshiftbackend.entity.enums.WebAuthnChallengePurpose;
 import edu.ijse.inshiftbackend.service.PasskeyService;
 import edu.ijse.inshiftbackend.util.APIResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -20,18 +22,29 @@ public class EmployeePasskeyController {
 
     @PostMapping("/register/options")
     @ResponseStatus(HttpStatus.OK)
-    public APIResponse<String> getRegisterOptions() {
+    public APIResponse<String> getRegisterOptions(
+            @RequestBody @Valid PasskeyRegisterStartDTO dto,
+            HttpServletRequest request
+    ) {
         return new APIResponse<>(
                 200,
                 "Passkey register options generated successfully",
-                passkeyService.getPasskeyRegisterResponse(WebAuthnChallengePurpose.REGISTER)
+                passkeyService.getPasskeyRegisterResponse(
+                        WebAuthnChallengePurpose.REGISTER,
+                        dto,
+                        request.getHeader("User-Agent"),
+                        request.getRemoteAddr()
+                )
         );
     }
 
     @PostMapping("/register/verify")
     @ResponseStatus(HttpStatus.OK)
-    public APIResponse<Void> verifyAndSavePasskey(@RequestBody @Valid PasskeyRegisterVerifyDTO dto) {
-        passkeyService.verifyAndSavePasskey(dto);
+    public APIResponse<Void> verifyAndSavePasskey(
+            @RequestBody @Valid PasskeyRegisterVerifyDTO dto,
+            HttpServletRequest request
+    ) {
+        passkeyService.verifyAndSavePasskey(dto, request.getHeader("User-Agent"));
         return new APIResponse<>(
                 200,
                 "Passkey registered successfully",

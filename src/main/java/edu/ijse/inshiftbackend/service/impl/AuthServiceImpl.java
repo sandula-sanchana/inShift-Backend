@@ -10,6 +10,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
@@ -42,7 +44,10 @@ public class AuthServiceImpl implements AuthService {
 
         String accessToken = jwtUtil.generateToken(employee.getEmail(), employee.getRole().name());
 
-        System.out.println(accessToken);
+        employee.setLastPasswordAuthenticatedAt(LocalDateTime.now());
+        employeeRepository.save(employee);
+
+        //System.out.println(accessToken);
 
         return new AuthResponseDTO(accessToken, employee.getRole().name());
     }

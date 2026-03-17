@@ -8,10 +8,7 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class PasskeyRegisterVerifyDTO {
-
-    @NotBlank(message = "Credential JSON is required")
-    private String credentialJson;
+public class PasskeyRegisterStartDTO {
 
     @NotBlank(message = "Device name is required")
     private String deviceName;

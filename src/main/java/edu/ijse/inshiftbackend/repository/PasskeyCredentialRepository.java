@@ -1,5 +1,6 @@
 package edu.ijse.inshiftbackend.repository;
 
+import edu.ijse.inshiftbackend.entity.Employee;
 import edu.ijse.inshiftbackend.entity.PasskeyCredential;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
@@ -23,4 +24,10 @@ public interface PasskeyCredentialRepository extends JpaRepository<PasskeyCreden
 
 
     Optional<PasskeyCredential> findByCredentialIdAndActiveTrue(String credentialId);
+
+    List<PasskeyCredential> findByEmployeeAndActiveTrue(Employee employee);
+
+    Optional<PasskeyCredential> findTopByEmployeeAndActiveTrueOrderByCreatedAtDesc(Employee employee);
+
+    long countByEmployeeAndActiveTrue(Employee employee);
 }

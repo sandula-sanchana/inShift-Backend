@@ -4,6 +4,8 @@ import edu.ijse.inshiftbackend.entity.enums.Role;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "employee")
 @Getter
@@ -49,4 +51,7 @@ public class Employee {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "shift_id")
     private Shift shift;
+
+    @Column(name = "last_password_authenticated_at")
+    private LocalDateTime lastPasswordAuthenticatedAt;
 }
