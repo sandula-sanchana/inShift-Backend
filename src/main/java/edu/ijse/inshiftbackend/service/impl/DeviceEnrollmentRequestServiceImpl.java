@@ -1,5 +1,6 @@
 package edu.ijse.inshiftbackend.service.impl;
 
+import edu.ijse.inshiftbackend.dto.response.AdminDeviceEnrollmentRequestResponseDTO;
 import edu.ijse.inshiftbackend.entity.DeviceEnrollmentRequest;
 import edu.ijse.inshiftbackend.entity.Employee;
 import edu.ijse.inshiftbackend.entity.PasskeyCredential;
@@ -127,5 +128,35 @@ public class DeviceEnrollmentRequestServiceImpl implements DeviceEnrollmentReque
 
         request.setStatus(DeviceEnrollmentRequestStatus.REJECTED);
         request.setAdminComment(adminComment);
+    }
+
+    @Override
+    public List<AdminDeviceEnrollmentRequestResponseDTO> getPendingRequests() {
+        return requestRepository.findByStatusOrderByCreatedAtDesc(DeviceEnrollmentRequestStatus.PENDING)
+                .stream()
+                .map(req -> AdminDeviceEnrollmentRequestResponseDTO.builder()
+                        .id(req.getId())
+                        .employeeName(req.getEmployee().getFullName())
+                        .employeeId(req.getEmployee().getEmployeeId())
+                        .status(req.getStatus().name())
+                        .requestType(req.getRequestType().name())
+                        .requestedDeviceName(req.getRequestedDeviceName())
+                        .requestedUserAgent(req.getRequestedUserAgent())
+                        .riskScoreImpact(req.getRiskScoreImpact())
+                        .createdAt(req.getCreatedAt())
+                        .expiresAt(req.getExpiresAt())
+                        .existingDeviceName(
+                                req.getExistingCredentialToReplace() != null
+                                        ? req.getExistingCredentialToReplace().getDeviceName()
+                                        : null
+                        )
+                        .existingCredentialCreatedAt(
+                                req.getExistingCredentialToReplace() != null
+                                        ? req.getExistingCredentialToReplace().getCreatedAt()
+                                        : null
+                        )
+                        .adminComment(req.getAdminComment())
+                        .build())
+                .toList();
     }
 }
