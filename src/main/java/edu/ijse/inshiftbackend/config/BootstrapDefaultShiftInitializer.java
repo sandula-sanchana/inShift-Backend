@@ -68,7 +68,7 @@ public class BootstrapDefaultShiftInitializer implements CommandLineRunner {
 
         shiftRepository.save(defaultShift);
 
-        System.out.println("✅ Bootstrap DEFAULT SHIFT created: " + shiftName +
+        System.out.println("Bootstrap DEFAULT SHIFT created: " + shiftName +
                 " (" + start + " - " + end + ")");
     }
 }
