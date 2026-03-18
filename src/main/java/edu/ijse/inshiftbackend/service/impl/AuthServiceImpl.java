@@ -49,6 +49,10 @@ public class AuthServiceImpl implements AuthService {
 
         //System.out.println(accessToken);
 
-        return new AuthResponseDTO(accessToken, employee.getRole().name());
+        return AuthResponseDTO.builder()
+                .access_token(accessToken)
+                .role(employee.getRole().name())
+                .passwordMustChange(employee.getMustChangePassword())
+                .build();
     }
 }
