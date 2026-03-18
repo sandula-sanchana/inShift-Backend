@@ -32,6 +32,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -45,6 +46,13 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
     private final ShiftRepository shiftRepository;
     private final AttendanceRuleService attendanceRuleService;
 
+    private static final Set<AttendanceFlagType> DAILY_REBUILD_FLAG_TYPES = Set.of(
+            AttendanceFlagType.SHORT_WORK_DURATION,
+            AttendanceFlagType.INVALID_OT_ELIGIBILITY,
+            AttendanceFlagType.TOO_MANY_CORRECTIONS,
+            AttendanceFlagType.WEB_ATTENDANCE_DEPENDENCY
+    );
+
     @Override
     @Transactional
     public void evaluateDay(Long employeeId, LocalDate attendanceDate) {
@@ -52,6 +60,8 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
 
         Shift shift = resolveShift(employee);
+
+        clearDailyRebuildFlags(employee, attendanceDate);
 
         List<AttendanceRecord> validIns = findValidPunches(employeeId, attendanceDate, AttendanceType.IN);
         List<AttendanceRecord> validOuts = findValidPunches(employeeId, attendanceDate, AttendanceType.OUT);
@@ -108,6 +118,18 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
                 .toList();
     }
 
+    private void clearDailyRebuildFlags(Employee employee, LocalDate attendanceDate) {
+        List<AttendanceFlag> existingFlags = attendanceFlagRepository
+                .findAllByEmployeeEmployeeIdAndAttendanceDateOrderByDetectedAtDesc(
+                        employee.getEmployeeId(),
+                        attendanceDate
+                );
+
+        existingFlags.stream()
+                .filter(flag -> DAILY_REBUILD_FLAG_TYPES.contains(flag.getFlagType()))
+                .forEach(attendanceFlagRepository::delete);
+    }
+
     private List<AttendanceRecord> findValidPunches(Long employeeId, LocalDate attendanceDate, AttendanceType type) {
         LocalDateTime start = attendanceDate.atStartOfDay();
         LocalDateTime end = attendanceDate.plusDays(1).atStartOfDay().minusNanos(1);
@@ -139,14 +161,11 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
             List<AttendanceRecord> validIns,
             List<AttendanceRecord> validOuts
     ) {
-        AttendanceRule thresholdRule = attendanceRuleService.getRequiredRule(
+        AttendanceRule rule = attendanceRuleService.getRequiredRule(
                 AttendanceRuleKey.SHORT_WORK_DURATION_MINUTES
         );
-        AttendanceRule scoreRule = attendanceRuleService.getRequiredRule(
-                AttendanceRuleKey.SHORT_WORK_DURATION_SCORE
-        );
 
-        if (!Boolean.TRUE.equals(thresholdRule.getEnabled())) return;
+        if (!Boolean.TRUE.equals(rule.getEnabled())) return;
         if (validIns.isEmpty() || validOuts.isEmpty()) return;
 
         AttendanceRecord firstIn = validIns.get(0);
@@ -154,14 +173,14 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
 
         long workedMinutes = Duration.between(firstIn.getEventTime(), lastOut.getEventTime()).toMinutes();
 
-        if (workedMinutes < safeInt(thresholdRule.getThresholdValue())) {
-            createFlagIfAbsent(
+        if (workedMinutes < safeInt(rule.getThresholdValue())) {
+            createFlag(
                     employee,
                     attendanceDate,
                     lastOut,
                     AttendanceFlagType.SHORT_WORK_DURATION,
-                    defaultSeverity(scoreRule.getSeverity(), RiskSeverity.HIGH),
-                    safeInt(scoreRule.getScoreImpact()),
+                    defaultSeverity(rule.getSeverity(), RiskSeverity.HIGH),
+                    safeInt(rule.getScoreImpact()),
                     "Worked duration is too short: " + workedMinutes + " minutes"
             );
         }
@@ -174,11 +193,11 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
             List<AttendanceRecord> validIns,
             List<AttendanceRecord> validOuts
     ) {
-        AttendanceRule scoreRule = attendanceRuleService.getRequiredRule(
+        AttendanceRule rule = attendanceRuleService.getRequiredRule(
                 AttendanceRuleKey.INVALID_OT_ELIGIBILITY_SCORE
         );
 
-        if (!Boolean.TRUE.equals(scoreRule.getEnabled())) return;
+        if (!Boolean.TRUE.equals(rule.getEnabled())) return;
         if (validIns.isEmpty() || validOuts.isEmpty()) return;
 
         AttendanceRecord firstIn = validIns.get(0);
@@ -197,13 +216,13 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
                         (lastOut.getOvertimeMinutes() != null && lastOut.getOvertimeMinutes() > 0);
 
         if (outMarkedOt && workedMinutes <= requiredShiftMinutes) {
-            createFlagIfAbsent(
+            createFlag(
                     employee,
                     attendanceDate,
                     lastOut,
                     AttendanceFlagType.INVALID_OT_ELIGIBILITY,
-                    defaultSeverity(scoreRule.getSeverity(), RiskSeverity.CRITICAL),
-                    safeInt(scoreRule.getScoreImpact()),
+                    defaultSeverity(rule.getSeverity(), RiskSeverity.CRITICAL),
+                    safeInt(rule.getScoreImpact()),
                     "Overtime detected without enough worked duration. Worked=" +
                             workedMinutes + " mins, required=" + requiredShiftMinutes + " mins"
             );
@@ -217,30 +236,27 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
         AttendanceRule windowRule = attendanceRuleService.getRequiredRule(
                 AttendanceRuleKey.TOO_MANY_CORRECTIONS_WINDOW_DAYS
         );
-        AttendanceRule scoreRule = attendanceRuleService.getRequiredRule(
-                AttendanceRuleKey.TOO_MANY_CORRECTIONS_SCORE
-        );
 
         if (!Boolean.TRUE.equals(limitRule.getEnabled())) return;
 
-        LocalDateTime after = LocalDateTime.now().minusDays(safeInt(windowRule.getThresholdValue()));
+        int windowDays = Math.max(1, safeInt(windowRule.getThresholdValue()));
+        LocalDateTime start = attendanceDate.minusDays(windowDays - 1L).atStartOfDay();
+        LocalDateTime end = attendanceDate.plusDays(1).atStartOfDay().minusNanos(1);
 
         long correctionCount = correctionRepository.countByEmployeeEmployeeIdAndCreatedAtAfter(
                 employee.getEmployeeId(),
-                after
+                start
         );
 
-        if (correctionCount > safeInt(limitRule.getThresholdValue())) {
-            createFlagIfAbsent(
+        if (correctionCount >= safeInt(limitRule.getThresholdValue())) {
+            createFlag(
                     employee,
                     attendanceDate,
                     null,
                     AttendanceFlagType.TOO_MANY_CORRECTIONS,
-                    defaultSeverity(scoreRule.getSeverity(), RiskSeverity.MEDIUM),
-                    safeInt(scoreRule.getScoreImpact()),
-                    "Too many correction requests in last " +
-                            safeInt(windowRule.getThresholdValue()) +
-                            " days: " + correctionCount
+                    defaultSeverity(limitRule.getSeverity(), RiskSeverity.MEDIUM),
+                    safeInt(limitRule.getScoreImpact()),
+                    "Too many correction requests in last " + windowDays + " days: " + correctionCount
             );
         }
     }
@@ -252,14 +268,12 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
         AttendanceRule windowRule = attendanceRuleService.getRequiredRule(
                 AttendanceRuleKey.WEB_ATTENDANCE_DEPENDENCY_WINDOW_DAYS
         );
-        AttendanceRule scoreRule = attendanceRuleService.getRequiredRule(
-                AttendanceRuleKey.WEB_ATTENDANCE_DEPENDENCY_SCORE
-        );
 
         if (!Boolean.TRUE.equals(limitRule.getEnabled())) return;
 
-        LocalDateTime start = LocalDateTime.now().minusDays(safeInt(windowRule.getThresholdValue()));
-        LocalDateTime end = LocalDateTime.now();
+        int windowDays = Math.max(1, safeInt(windowRule.getThresholdValue()));
+        LocalDateTime start = attendanceDate.minusDays(windowDays - 1L).atStartOfDay();
+        LocalDateTime end = attendanceDate.plusDays(1).atStartOfDay().minusNanos(1);
 
         long webCount = attendanceRecordRepository.countByEmployeeEmployeeIdAndSourceAndEventTimeBetween(
                 employee.getEmployeeId(),
@@ -268,22 +282,20 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
                 end
         );
 
-        if (webCount > safeInt(limitRule.getThresholdValue())) {
-            createFlagIfAbsent(
+        if (webCount >= safeInt(limitRule.getThresholdValue())) {
+            createFlag(
                     employee,
                     attendanceDate,
                     null,
                     AttendanceFlagType.WEB_ATTENDANCE_DEPENDENCY,
-                    defaultSeverity(scoreRule.getSeverity(), RiskSeverity.MEDIUM),
-                    safeInt(scoreRule.getScoreImpact()),
-                    "Too many web/manual attendance punches in last " +
-                            safeInt(windowRule.getThresholdValue()) +
-                            " days: " + webCount
+                    defaultSeverity(limitRule.getSeverity(), RiskSeverity.MEDIUM),
+                    safeInt(limitRule.getScoreImpact()),
+                    "Too many web/manual attendance punches in last " + windowDays + " days: " + webCount
             );
         }
     }
 
-    private void createFlagIfAbsent(
+    private void createFlag(
             Employee employee,
             LocalDate attendanceDate,
             AttendanceRecord attendance,
@@ -292,15 +304,6 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
             int scoreImpact,
             String message
     ) {
-        boolean exists = attendanceFlagRepository
-                .existsByEmployeeEmployeeIdAndAttendanceDateAndFlagTypeAndResolvedFalse(
-                        employee.getEmployeeId(),
-                        attendanceDate,
-                        type
-                );
-
-        if (exists) return;
-
         AttendanceFlag flag = AttendanceFlag.builder()
                 .employee(employee)
                 .attendanceDate(attendanceDate)

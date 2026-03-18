@@ -1,19 +1,22 @@
 package edu.ijse.inshiftbackend.entity.enums;
 
 public enum AttendanceRuleKey {
-    SHORT_WORK_DURATION_MINUTES,
-    SHORT_WORK_DURATION_SCORE,
 
+    // work duration
+    SHORT_WORK_DURATION_MINUTES,
+
+    // correction behavior
     TOO_MANY_CORRECTIONS_LIMIT,
     TOO_MANY_CORRECTIONS_WINDOW_DAYS,
-    TOO_MANY_CORRECTIONS_SCORE,
 
+    // manual/web dependency behaviour
     WEB_ATTENDANCE_DEPENDENCY_LIMIT,
     WEB_ATTENDANCE_DEPENDENCY_WINDOW_DAYS,
-    WEB_ATTENDANCE_DEPENDENCY_SCORE,
 
+    // OT abuse intelligence
     INVALID_OT_ELIGIBILITY_SCORE,
 
+    // trust scoring
     REVIEW_TRUST_THRESHOLD,
     HIGH_RISK_TRUST_THRESHOLD
 }
