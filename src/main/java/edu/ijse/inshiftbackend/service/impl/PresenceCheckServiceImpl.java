@@ -29,7 +29,7 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
     private final PresenceNotificationService presenceNotificationService;
 
     private static final int DEFAULT_DUE_SECONDS = 120;
-
+    //this for admin manual presence checks
     @Override
     @Transactional
     public PresenceCheckResponseDTO createPresenceCheck(PresenceCheckCreateDTO dto, String adminEmail) {

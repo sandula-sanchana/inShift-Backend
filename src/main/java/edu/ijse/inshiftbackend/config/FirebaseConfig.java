@@ -16,7 +16,7 @@ public class FirebaseConfig {
         try {
             InputStream serviceAccount = getClass()
                     .getClassLoader()
-                    .getResourceAsStream("firebase-service-account.json");
+                    .getResourceAsStream("inshift-8b9f0-firebase-adminsdk-fbsvc-17358387c2.json");
 
             if (serviceAccount == null) {
                 throw new RuntimeException("firebase-service-account.json not found in resources");
