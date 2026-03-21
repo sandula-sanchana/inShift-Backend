@@ -1,4 +1,4 @@
-package edu.ijse.inshiftbackend.controllers.admin;
+package edu.ijse.inshiftbackend.controllers;
 
 import edu.ijse.inshiftbackend.dto.DeviceEnrollmentDecisionDTO;
 import edu.ijse.inshiftbackend.dto.response.AdminDeviceEnrollmentRequestResponseDTO;
