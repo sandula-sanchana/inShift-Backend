@@ -11,8 +11,10 @@ import edu.ijse.inshiftbackend.exception.custom.ResourceNotFoundException;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
 import edu.ijse.inshiftbackend.repository.PresenceCheckRepository;
 import edu.ijse.inshiftbackend.service.PresenceCheckService;
+import edu.ijse.inshiftbackend.service.PresenceNotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -24,10 +26,12 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
 
     private final PresenceCheckRepository presenceCheckRepository;
     private final EmployeeRepository employeeRepository;
+    private final PresenceNotificationService presenceNotificationService;
 
     private static final int DEFAULT_DUE_SECONDS = 120;
 
     @Override
+    @Transactional
     public PresenceCheckResponseDTO createPresenceCheck(PresenceCheckCreateDTO dto, String adminEmail) {
         Employee employee = employeeRepository.findById(dto.getEmployeeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
@@ -72,6 +76,14 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
 
         PresenceCheck saved = presenceCheckRepository.save(presenceCheck);
 
+        try {
+            presenceNotificationService.sendPresenceCheckNotification(saved);
+            saved.setNotifiedAt(LocalDateTime.now());
+            saved = presenceCheckRepository.save(saved);
+        } catch (Exception e) {
+            System.err.println("Presence check created, but notification send failed: " + e.getMessage());
+        }
+
         return mapToDTO(saved);
     }
 
@@ -91,6 +103,7 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
     }
 
     @Override
+    @Transactional
     public PresenceCheckResponseDTO respondToPresenceCheck(EmpPresenceCheckRespondDTO dto, String employeeEmail) {
         Employee employee = employeeRepository.findByEmail(employeeEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
