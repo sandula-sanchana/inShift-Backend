@@ -19,16 +19,33 @@ public class AdminPresenceCheckController {
 
     private final PresenceCheckService presenceCheckService;
 
+//    @PostMapping("/trigger")
+//    public APIResponse<PresenceCheckResponseDTO> trigger(
+//            @RequestBody @Valid PresenceCheckCreateDTO dto,
+//            Authentication auth
+//    ) {
+//        return new APIResponse<>(
+//                200,
+//                "Presence check triggered successfully",
+//                presenceCheckService.createPresenceCheck(dto, auth.getName())
+//        );
+//    }
+
     @PostMapping("/trigger")
     public APIResponse<PresenceCheckResponseDTO> trigger(
             @RequestBody @Valid PresenceCheckCreateDTO dto,
             Authentication auth
     ) {
-        return new APIResponse<>(
-                200,
-                "Presence check triggered successfully",
-                presenceCheckService.createPresenceCheck(dto, auth.getName())
-        );
+        try {
+            return new APIResponse<>(
+                    200,
+                    "Presence check triggered successfully",
+                    presenceCheckService.createPresenceCheck(dto, auth.getName())
+            );
+        } catch (Exception e) {
+            e.printStackTrace(); // temporary debug
+            throw e;
+        }
     }
 
     @GetMapping("/active")

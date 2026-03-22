@@ -2,6 +2,7 @@ package edu.ijse.inshiftbackend.service.impl;
 
 import edu.ijse.inshiftbackend.entity.Employee;
 import edu.ijse.inshiftbackend.entity.PresenceCheck;
+import edu.ijse.inshiftbackend.entity.PresenceCheckPlan;
 import edu.ijse.inshiftbackend.entity.enums.*;
 import edu.ijse.inshiftbackend.repository.PresenceCheckRepository;
 import edu.ijse.inshiftbackend.service.PresenceCheckTriggerService;
@@ -81,5 +82,47 @@ public class PresenceCheckTriggerServiceImpl implements PresenceCheckTriggerServ
             case MEDIUM -> 5;
             case HIGH -> 3;
         };
+    }
+
+    @Override
+    @Transactional
+    public PresenceCheck triggerFromPlan(PresenceCheckPlan plan) {
+        presenceCheckRepository
+                .findFirstByEmployeeEmployeeIdAndStatusOrderByCreatedAtDesc(
+                        plan.getEmployee().getEmployeeId(),
+                        PresenceCheckStatus.PENDING
+                )
+                .ifPresent(existing -> {
+                    throw new IllegalStateException("Employee already has a pending presence check");
+                });
+
+        LocalDateTime now = LocalDateTime.now();
+
+        PresenceCheck check = PresenceCheck.builder()
+                .employee(plan.getEmployee())
+                .triggerReason(plan.getTriggerReason())
+                .triggerDescription(plan.getDescription())
+                .riskLevel(plan.getRiskLevel())
+                .status(PresenceCheckStatus.PENDING)
+                .sourceExpected(plan.getSourceExpected())
+                .createdAt(now)
+                .dueAt(now.plusMinutes(plan.getDueInMinutes()))
+                .lateResponse(false)
+                .missedResponse(false)
+                .escalated(false)
+                .escalationLevel(0)
+                .build();
+
+        check = presenceCheckRepository.save(check);
+
+        try {
+            presenceNotificationService.sendPresenceCheckNotification(check);
+            check.setNotifiedAt(LocalDateTime.now());
+            check = presenceCheckRepository.save(check);
+        } catch (Exception e) {
+            System.err.println("Presence check triggered from plan, but notification failed: " + e.getMessage());
+        }
+
+        return check;
     }
 }

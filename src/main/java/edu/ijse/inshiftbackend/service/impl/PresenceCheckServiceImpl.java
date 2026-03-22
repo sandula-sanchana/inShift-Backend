@@ -5,7 +5,9 @@ import edu.ijse.inshiftbackend.dto.EmpPresenceCheckRespondDTO;
 import edu.ijse.inshiftbackend.dto.response.PresenceCheckResponseDTO;
 import edu.ijse.inshiftbackend.entity.Employee;
 import edu.ijse.inshiftbackend.entity.PresenceCheck;
+import edu.ijse.inshiftbackend.entity.enums.PresenceCheckRiskLevel;
 import edu.ijse.inshiftbackend.entity.enums.PresenceCheckStatus;
+import edu.ijse.inshiftbackend.entity.enums.PresenceCheckTriggerReason;
 import edu.ijse.inshiftbackend.exception.custom.BadRequestException;
 import edu.ijse.inshiftbackend.exception.custom.ResourceNotFoundException;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
@@ -19,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+
 
 @Service
 @RequiredArgsConstructor
@@ -51,7 +54,7 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
         PresenceCheck presenceCheck = PresenceCheck.builder()
                 .employee(employee)
                 .triggerReason(dto.getTriggerReason())
-                .riskLevel(dto.getRiskLevel())
+                .riskLevel(resolveManualRiskLevel(dto.getTriggerReason()))
                 .status(PresenceCheckStatus.PENDING)
                 .sourceExpected(dto.getSourceExpected())
                 .triggerDescription(dto.getTriggerDescription())
@@ -85,6 +88,14 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
         }
 
         return mapToDTO(saved);
+    }
+
+    private PresenceCheckRiskLevel resolveManualRiskLevel(PresenceCheckTriggerReason reason) {
+        return switch (reason) {
+            case RANDOM -> PresenceCheckRiskLevel.LOW;
+            case LOCATION_ANOMALY, ADMIN_MANUAL, RULE_ENGINE -> PresenceCheckRiskLevel.MEDIUM;
+            case RISK_PATTERN, DEVICE_ANOMALY -> PresenceCheckRiskLevel.HIGH;
+        };
     }
 
     @Override
