@@ -24,5 +24,10 @@ public interface AttendanceCorrectionRequestRepository
             CorrectionStatus status
     );
 
-    long countByEmployeeEmployeeIdAndCreatedAtAfter(Long employeeId, java.time.LocalDateTime after);
+    List<AttendanceCorrectionRequest> findByEmployeeEmployeeIdAndAttendanceDateBetween(
+            Long employeeId,
+            LocalDate startDate,
+            LocalDate endDate
+    );
+
 }

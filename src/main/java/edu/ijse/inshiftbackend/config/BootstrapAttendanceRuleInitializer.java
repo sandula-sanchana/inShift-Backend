@@ -76,11 +76,11 @@ public class BootstrapAttendanceRuleInitializer implements CommandLineRunner {
         );
 
         createIfMissing(
-                AttendanceRuleKey.INVALID_OT_ELIGIBILITY_SCORE,
-                "Invalid OT Score",
-                "Score added when OT marked without enough work",
+                AttendanceRuleKey.INVALID_OT_MINUTES_LIMIT,
+                "Invalid OT Minutes Limit",
+                "Max overtime minutes allowed before invalid OT flag is raised",
                 true,
-                0,
+                180,
                 50,
                 RiskSeverity.CRITICAL
         );

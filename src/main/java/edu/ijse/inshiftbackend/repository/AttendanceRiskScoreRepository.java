@@ -15,5 +15,5 @@ public interface AttendanceRiskScoreRepository extends JpaRepository<AttendanceR
             Long employeeId, LocalDate attendanceDate
     );
 
-    List<AttendanceRiskScore> findAllByAttendanceDateOrderByRiskScoreDesc(LocalDate attendanceDate);
+    List<AttendanceRiskScore> findAllByAttendanceDate(LocalDate date);
 }

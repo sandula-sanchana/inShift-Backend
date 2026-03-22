@@ -14,7 +14,7 @@ public enum AttendanceRuleKey {
     WEB_ATTENDANCE_DEPENDENCY_WINDOW_DAYS,
 
     // OT abuse intelligence
-    INVALID_OT_ELIGIBILITY_SCORE,
+    INVALID_OT_MINUTES_LIMIT,
 
     // trust scoring
     REVIEW_TRUST_THRESHOLD,

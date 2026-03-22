@@ -2,14 +2,14 @@ package edu.ijse.inshiftbackend.service.impl;
 
 import edu.ijse.inshiftbackend.dto.response.AttendanceFlagDTO;
 import edu.ijse.inshiftbackend.dto.response.AttendanceIntelligenceOverviewDTO;
+import edu.ijse.inshiftbackend.entity.AttendanceCorrectionRequest;
 import edu.ijse.inshiftbackend.entity.AttendanceFlag;
 import edu.ijse.inshiftbackend.entity.AttendanceRecord;
 import edu.ijse.inshiftbackend.entity.AttendanceRiskScore;
 import edu.ijse.inshiftbackend.entity.AttendanceRule;
 import edu.ijse.inshiftbackend.entity.Employee;
-import edu.ijse.inshiftbackend.entity.Shift;
+import edu.ijse.inshiftbackend.entity.EmployeeBehaviorScore;
 import edu.ijse.inshiftbackend.entity.enums.AttendanceFlagType;
-import edu.ijse.inshiftbackend.entity.enums.AttendanceMark;
 import edu.ijse.inshiftbackend.entity.enums.AttendanceRuleKey;
 import edu.ijse.inshiftbackend.entity.enums.AttendanceSource;
 import edu.ijse.inshiftbackend.entity.enums.AttendanceStatus;
@@ -20,38 +20,31 @@ import edu.ijse.inshiftbackend.repository.AttendanceCorrectionRequestRepository;
 import edu.ijse.inshiftbackend.repository.AttendanceFlagRepository;
 import edu.ijse.inshiftbackend.repository.AttendanceRecordRepository;
 import edu.ijse.inshiftbackend.repository.AttendanceRiskScoreRepository;
+import edu.ijse.inshiftbackend.repository.EmployeeBehaviorScoreRepository;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
-import edu.ijse.inshiftbackend.repository.ShiftRepository;
 import edu.ijse.inshiftbackend.service.AttendanceIntelligenceService;
 import edu.ijse.inshiftbackend.service.AttendanceRuleService;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligenceService {
 
-    private final EmployeeRepository employeeRepository;
     private final AttendanceRecordRepository attendanceRecordRepository;
-    private final AttendanceCorrectionRequestRepository correctionRepository;
     private final AttendanceFlagRepository attendanceFlagRepository;
-    private final AttendanceRiskScoreRepository riskScoreRepository;
-    private final ShiftRepository shiftRepository;
+    private final AttendanceRiskScoreRepository attendanceRiskScoreRepository;
+    private final AttendanceCorrectionRequestRepository correctionRequestRepository;
+    private final EmployeeBehaviorScoreRepository employeeBehaviorScoreRepository;
+    private final EmployeeRepository employeeRepository;
     private final AttendanceRuleService attendanceRuleService;
-
-    private static final Set<AttendanceFlagType> DAILY_REBUILD_FLAG_TYPES = Set.of(
-            AttendanceFlagType.SHORT_WORK_DURATION,
-            AttendanceFlagType.INVALID_OT_ELIGIBILITY,
-            AttendanceFlagType.TOO_MANY_CORRECTIONS,
-            AttendanceFlagType.WEB_ATTENDANCE_DEPENDENCY
-    );
 
     @Override
     @Transactional
@@ -59,24 +52,33 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
         Employee employee = employeeRepository.findById(employeeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
 
-        Shift shift = resolveShift(employee);
+        LocalDateTime start = attendanceDate.atStartOfDay();
+        LocalDateTime end = attendanceDate.plusDays(1).atStartOfDay();
 
-        clearDailyRebuildFlags(employee, attendanceDate);
+        List<AttendanceRecord> dailyRecords =
+                attendanceRecordRepository.findByEmployeeEmployeeIdAndEventTimeBetween(
+                        employeeId,
+                        start,
+                        end
+                );
 
-        List<AttendanceRecord> validIns = findValidPunches(employeeId, attendanceDate, AttendanceType.IN);
-        List<AttendanceRecord> validOuts = findValidPunches(employeeId, attendanceDate, AttendanceType.OUT);
+        attendanceFlagRepository.deleteByEmployeeEmployeeIdAndAttendanceDate(
+                employeeId,
+                attendanceDate
+        );
 
-        checkShortWorkDuration(employee, attendanceDate, validIns, validOuts);
-        checkInvalidOtEligibility(employee, attendanceDate, shift, validIns, validOuts);
-        checkTooManyCorrections(employee, attendanceDate);
-        checkWebAttendanceDependency(employee, attendanceDate);
+        evaluateShortWorkDuration(employee, attendanceDate, dailyRecords);
+        evaluateInvalidOtEligibility(employee, attendanceDate, dailyRecords);
+        evaluateTooManyCorrections(employee, attendanceDate);
+        evaluateWebAttendanceDependency(employee, attendanceDate);
 
-        recalculateRiskScore(employee, attendanceDate);
+        recalculateDailyRiskScore(employee, attendanceDate);
+        updateCurrentBehaviorScore(employee, attendanceDate);
     }
 
     @Override
     public List<AttendanceFlag> getFlagsForEmployeeDay(Long employeeId, LocalDate attendanceDate) {
-        return attendanceFlagRepository.findAllByEmployeeEmployeeIdAndAttendanceDateOrderByDetectedAtDesc(
+        return attendanceFlagRepository.findByEmployeeEmployeeIdAndAttendanceDateOrderByDetectedAtDesc(
                 employeeId,
                 attendanceDate
         );
@@ -84,24 +86,26 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
 
     @Override
     public List<AttendanceIntelligenceOverviewDTO> getDailyOverview(LocalDate date) {
-        return riskScoreRepository.findAllByAttendanceDateOrderByRiskScoreDesc(date)
-                .stream()
+        List<AttendanceRiskScore> scores = attendanceRiskScoreRepository.findAllByAttendanceDate(date);
+
+        return scores.stream()
                 .map(score -> {
-                    List<AttendanceFlagDTO> flags = attendanceFlagRepository
-                            .findAllByEmployeeEmployeeIdAndAttendanceDateOrderByDetectedAtDesc(
-                                    score.getEmployee().getEmployeeId(),
-                                    date
-                            )
-                            .stream()
-                            .map(flag -> AttendanceFlagDTO.builder()
-                                    .id(flag.getId())
-                                    .flagType(flag.getFlagType().name())
-                                    .severity(flag.getSeverity().name())
-                                    .scoreImpact(flag.getScoreImpact())
-                                    .message(flag.getMessage())
-                                    .resolved(flag.getResolved())
-                                    .build())
-                            .toList();
+                    List<AttendanceFlagDTO> flags =
+                            attendanceFlagRepository
+                                    .findByEmployeeEmployeeIdAndAttendanceDateOrderByDetectedAtDesc(
+                                            score.getEmployee().getEmployeeId(),
+                                            date
+                                    )
+                                    .stream()
+                                    .map(flag -> AttendanceFlagDTO.builder()
+                                            .id(flag.getId())
+                                            .flagType(flag.getFlagType() != null ? flag.getFlagType().name() : null)
+                                            .severity(flag.getSeverity() != null ? flag.getSeverity().name() : null)
+                                            .scoreImpact(flag.getScoreImpact())
+                                            .message(flag.getMessage())
+                                            .resolved(flag.getResolved())
+                                            .build())
+                                    .toList();
 
                     return AttendanceIntelligenceOverviewDTO.builder()
                             .employeeId(score.getEmployee().getEmployeeId())
@@ -118,118 +122,81 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
                 .toList();
     }
 
-    private void clearDailyRebuildFlags(Employee employee, LocalDate attendanceDate) {
-        List<AttendanceFlag> existingFlags = attendanceFlagRepository
-                .findAllByEmployeeEmployeeIdAndAttendanceDateOrderByDetectedAtDesc(
-                        employee.getEmployeeId(),
-                        attendanceDate
-                );
-
-        existingFlags.stream()
-                .filter(flag -> DAILY_REBUILD_FLAG_TYPES.contains(flag.getFlagType()))
-                .forEach(attendanceFlagRepository::delete);
-    }
-
-    private List<AttendanceRecord> findValidPunches(Long employeeId, LocalDate attendanceDate, AttendanceType type) {
-        LocalDateTime start = attendanceDate.atStartOfDay();
-        LocalDateTime end = attendanceDate.plusDays(1).atStartOfDay().minusNanos(1);
-
-        return attendanceRecordRepository
-                .findAllByEmployeeEmployeeIdAndTypeAndStatusAndEventTimeBetweenOrderByEventTimeAsc(
-                        employeeId,
-                        type,
-                        AttendanceStatus.VALID,
-                        start,
-                        end
-                );
-    }
-
-    private Shift resolveShift(Employee employee) {
-        Shift employeeShift = employee.getShift();
-
-        if (employeeShift != null && Boolean.TRUE.equals(employeeShift.getActive())) {
-            return employeeShift;
-        }
-
-        return shiftRepository.findByIsDefaultTrueAndActiveTrue()
-                .orElseThrow(() -> new ResourceNotFoundException("No active default shift configured"));
-    }
-
-    private void checkShortWorkDuration(
+    private void evaluateShortWorkDuration(
             Employee employee,
             LocalDate attendanceDate,
-            List<AttendanceRecord> validIns,
-            List<AttendanceRecord> validOuts
+            List<AttendanceRecord> dailyRecords
     ) {
         AttendanceRule rule = attendanceRuleService.getRequiredRule(
                 AttendanceRuleKey.SHORT_WORK_DURATION_MINUTES
         );
 
-        if (!Boolean.TRUE.equals(rule.getEnabled())) return;
-        if (validIns.isEmpty() || validOuts.isEmpty()) return;
+        if (!Boolean.TRUE.equals(rule.getEnabled())) {
+            return;
+        }
 
-        AttendanceRecord firstIn = validIns.get(0);
-        AttendanceRecord lastOut = validOuts.get(validOuts.size() - 1);
+        if (dailyRecords == null || dailyRecords.isEmpty()) {
+            return;
+        }
 
-        long workedMinutes = Duration.between(firstIn.getEventTime(), lastOut.getEventTime()).toMinutes();
+        Integer thresholdMinutes = rule.getThresholdValue();
+        if (thresholdMinutes == null) {
+            return;
+        }
 
-        if (workedMinutes < safeInt(rule.getThresholdValue())) {
+        long totalWorkedMinutes = calculateWorkedMinutes(dailyRecords);
+
+        if (totalWorkedMinutes < thresholdMinutes) {
             createFlag(
                     employee,
                     attendanceDate,
-                    lastOut,
                     AttendanceFlagType.SHORT_WORK_DURATION,
-                    defaultSeverity(rule.getSeverity(), RiskSeverity.HIGH),
-                    safeInt(rule.getScoreImpact()),
-                    "Worked duration is too short: " + workedMinutes + " minutes"
+                    rule,
+                    "Worked minutes " + totalWorkedMinutes + " is below threshold " + thresholdMinutes
             );
         }
     }
 
-    private void checkInvalidOtEligibility(
+    private void evaluateInvalidOtEligibility(
             Employee employee,
             LocalDate attendanceDate,
-            Shift shift,
-            List<AttendanceRecord> validIns,
-            List<AttendanceRecord> validOuts
+            List<AttendanceRecord> dailyRecords
     ) {
         AttendanceRule rule = attendanceRuleService.getRequiredRule(
-                AttendanceRuleKey.INVALID_OT_ELIGIBILITY_SCORE
+                AttendanceRuleKey.INVALID_OT_MINUTES_LIMIT
         );
 
-        if (!Boolean.TRUE.equals(rule.getEnabled())) return;
-        if (validIns.isEmpty() || validOuts.isEmpty()) return;
+        if (!Boolean.TRUE.equals(rule.getEnabled())) {
+            return;
+        }
 
-        AttendanceRecord firstIn = validIns.get(0);
-        AttendanceRecord lastOut = validOuts.get(validOuts.size() - 1);
+        if (dailyRecords == null || dailyRecords.isEmpty()) {
+            return;
+        }
 
-        long workedMinutes = Duration.between(firstIn.getEventTime(), lastOut.getEventTime()).toMinutes();
+        Integer thresholdMinutes = rule.getThresholdValue();
+        if (thresholdMinutes == null) {
+            return;
+        }
 
-        long requiredShiftMinutes =
-                Duration.between(shift.getStartTime(), shift.getEndTime()).toMinutes()
-                        - safeInt(shift.getBreakMinutes());
+        long suspiciousOtCount = dailyRecords.stream()
+                .filter(this::isUsableAttendanceRecord)
+                .filter(r -> r.getOvertimeMinutes() != null)
+                .filter(r -> r.getOvertimeMinutes() > thresholdMinutes)
+                .count();
 
-        if (requiredShiftMinutes < 0) requiredShiftMinutes = 0;
-
-        boolean outMarkedOt =
-                lastOut.getAttendanceMark() == AttendanceMark.OVERTIME ||
-                        (lastOut.getOvertimeMinutes() != null && lastOut.getOvertimeMinutes() > 0);
-
-        if (outMarkedOt && workedMinutes <= requiredShiftMinutes) {
+        if (suspiciousOtCount > 0) {
             createFlag(
                     employee,
                     attendanceDate,
-                    lastOut,
                     AttendanceFlagType.INVALID_OT_ELIGIBILITY,
-                    defaultSeverity(rule.getSeverity(), RiskSeverity.CRITICAL),
-                    safeInt(rule.getScoreImpact()),
-                    "Overtime detected without enough worked duration. Worked=" +
-                            workedMinutes + " mins, required=" + requiredShiftMinutes + " mins"
+                    rule,
+                    "Detected " + suspiciousOtCount + " attendance records with overtime minutes above threshold " + thresholdMinutes
             );
         }
     }
 
-    private void checkTooManyCorrections(Employee employee, LocalDate attendanceDate) {
+    private void evaluateTooManyCorrections(Employee employee, LocalDate attendanceDate) {
         AttendanceRule limitRule = attendanceRuleService.getRequiredRule(
                 AttendanceRuleKey.TOO_MANY_CORRECTIONS_LIMIT
         );
@@ -237,31 +204,40 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
                 AttendanceRuleKey.TOO_MANY_CORRECTIONS_WINDOW_DAYS
         );
 
-        if (!Boolean.TRUE.equals(limitRule.getEnabled())) return;
+        if (!Boolean.TRUE.equals(limitRule.getEnabled())) {
+            return;
+        }
 
-        int windowDays = Math.max(1, safeInt(windowRule.getThresholdValue()));
-        LocalDateTime start = attendanceDate.minusDays(windowDays - 1L).atStartOfDay();
-        LocalDateTime end = attendanceDate.plusDays(1).atStartOfDay().minusNanos(1);
+        Integer limit = limitRule.getThresholdValue();
+        Integer windowDays = windowRule.getThresholdValue();
 
-        long correctionCount = correctionRepository.countByEmployeeEmployeeIdAndCreatedAtAfter(
-                employee.getEmployeeId(),
-                start
-        );
+        if (limit == null || windowDays == null || windowDays <= 0) {
+            return;
+        }
 
-        if (correctionCount >= safeInt(limitRule.getThresholdValue())) {
+        LocalDate startDate = attendanceDate.minusDays(windowDays - 1);
+
+        List<AttendanceCorrectionRequest> corrections =
+                correctionRequestRepository.findByEmployeeEmployeeIdAndAttendanceDateBetween(
+                        employee.getEmployeeId(),
+                        startDate,
+                        attendanceDate
+                );
+
+        int count = corrections != null ? corrections.size() : 0;
+
+        if (count > limit) {
             createFlag(
                     employee,
                     attendanceDate,
-                    null,
                     AttendanceFlagType.TOO_MANY_CORRECTIONS,
-                    defaultSeverity(limitRule.getSeverity(), RiskSeverity.MEDIUM),
-                    safeInt(limitRule.getScoreImpact()),
-                    "Too many correction requests in last " + windowDays + " days: " + correctionCount
+                    limitRule,
+                    "Correction request count " + count + " exceeded limit " + limit + " within last " + windowDays + " day(s)"
             );
         }
     }
 
-    private void checkWebAttendanceDependency(Employee employee, LocalDate attendanceDate) {
+    private void evaluateWebAttendanceDependency(Employee employee, LocalDate attendanceDate) {
         AttendanceRule limitRule = attendanceRuleService.getRequiredRule(
                 AttendanceRuleKey.WEB_ATTENDANCE_DEPENDENCY_LIMIT
         );
@@ -269,28 +245,40 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
                 AttendanceRuleKey.WEB_ATTENDANCE_DEPENDENCY_WINDOW_DAYS
         );
 
-        if (!Boolean.TRUE.equals(limitRule.getEnabled())) return;
+        if (!Boolean.TRUE.equals(limitRule.getEnabled())) {
+            return;
+        }
 
-        int windowDays = Math.max(1, safeInt(windowRule.getThresholdValue()));
-        LocalDateTime start = attendanceDate.minusDays(windowDays - 1L).atStartOfDay();
-        LocalDateTime end = attendanceDate.plusDays(1).atStartOfDay().minusNanos(1);
+        Integer limit = limitRule.getThresholdValue();
+        Integer windowDays = windowRule.getThresholdValue();
 
-        long webCount = attendanceRecordRepository.countByEmployeeEmployeeIdAndSourceAndEventTimeBetween(
-                employee.getEmployeeId(),
-                AttendanceSource.WEB,
-                start,
-                end
-        );
+        if (limit == null || windowDays == null || windowDays <= 0) {
+            return;
+        }
 
-        if (webCount >= safeInt(limitRule.getThresholdValue())) {
+        LocalDate startDate = attendanceDate.minusDays(windowDays - 1);
+        LocalDateTime start = startDate.atStartOfDay();
+        LocalDateTime end = attendanceDate.plusDays(1).atStartOfDay();
+
+        List<AttendanceRecord> records =
+                attendanceRecordRepository.findByEmployeeEmployeeIdAndEventTimeBetween(
+                        employee.getEmployeeId(),
+                        start,
+                        end
+                );
+
+        long webCount = records.stream()
+                .filter(this::isUsableAttendanceRecord)
+                .filter(r -> r.getSource() == AttendanceSource.WEB)
+                .count();
+
+        if (webCount > limit) {
             createFlag(
                     employee,
                     attendanceDate,
-                    null,
                     AttendanceFlagType.WEB_ATTENDANCE_DEPENDENCY,
-                    defaultSeverity(limitRule.getSeverity(), RiskSeverity.MEDIUM),
-                    safeInt(limitRule.getScoreImpact()),
-                    "Too many web/manual attendance punches in last " + windowDays + " days: " + webCount
+                    limitRule,
+                    "Web/manual attendance usage count " + webCount + " exceeded limit " + limit + " within last " + windowDays + " day(s)"
             );
         }
     }
@@ -298,73 +286,187 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
     private void createFlag(
             Employee employee,
             LocalDate attendanceDate,
-            AttendanceRecord attendance,
-            AttendanceFlagType type,
-            RiskSeverity severity,
-            int scoreImpact,
+            AttendanceFlagType flagType,
+            AttendanceRule rule,
             String message
     ) {
         AttendanceFlag flag = AttendanceFlag.builder()
                 .employee(employee)
                 .attendanceDate(attendanceDate)
-                .attendance(attendance)
-                .flagType(type)
-                .severity(severity)
-                .scoreImpact(scoreImpact)
+                .attendance(null)
+                .flagType(flagType)
+                .severity(rule.getSeverity())
+                .scoreImpact(rule.getScoreImpact() != null ? rule.getScoreImpact() : 0)
                 .message(message)
                 .resolved(false)
+                .detectedAt(LocalDateTime.now())
                 .build();
 
         attendanceFlagRepository.save(flag);
     }
 
-    private void recalculateRiskScore(Employee employee, LocalDate attendanceDate) {
-        List<AttendanceFlag> flags =
-                attendanceFlagRepository.findAllByEmployeeEmployeeIdAndAttendanceDateOrderByDetectedAtDesc(
+    private void recalculateDailyRiskScore(Employee employee, LocalDate attendanceDate) {
+        List<AttendanceFlag> unresolvedFlags =
+                attendanceFlagRepository.findByEmployeeEmployeeIdAndAttendanceDateAndResolvedFalse(
                         employee.getEmployeeId(),
                         attendanceDate
                 );
 
-        int riskScore = flags.stream()
-                .filter(f -> Boolean.FALSE.equals(f.getResolved()))
-                .mapToInt(f -> f.getScoreImpact() == null ? 0 : f.getScoreImpact())
+        int riskScore = unresolvedFlags.stream()
+                .map(AttendanceFlag::getScoreImpact)
+                .filter(v -> v != null)
+                .mapToInt(Integer::intValue)
                 .sum();
 
-        int trustScore = Math.max(0, 100 - riskScore);
-        int totalFlags = (int) flags.stream()
-                .filter(f -> Boolean.FALSE.equals(f.getResolved()))
-                .count();
+        riskScore = clamp(riskScore, 0, 100);
 
-        AttendanceRule reviewRule = attendanceRuleService.getRequiredRule(
+        int trustScore = clamp(100 - riskScore, 0, 100);
+        int totalFlags = unresolvedFlags.size();
+
+        AttendanceRule reviewTrustRule = attendanceRuleService.getRequiredRule(
                 AttendanceRuleKey.REVIEW_TRUST_THRESHOLD
         );
-        AttendanceRule highRiskRule = attendanceRuleService.getRequiredRule(
+        AttendanceRule highRiskTrustRule = attendanceRuleService.getRequiredRule(
                 AttendanceRuleKey.HIGH_RISK_TRUST_THRESHOLD
         );
 
-        AttendanceRiskScore score = riskScoreRepository
-                .findByEmployeeEmployeeIdAndAttendanceDate(employee.getEmployeeId(), attendanceDate)
-                .orElse(
-                        AttendanceRiskScore.builder()
-                                .employee(employee)
-                                .attendanceDate(attendanceDate)
-                                .build()
-                );
+        int reviewTrustThreshold = reviewTrustRule.getThresholdValue() != null
+                ? reviewTrustRule.getThresholdValue()
+                : 70;
 
-        score.setRiskScore(riskScore);
-        score.setTrustScore(trustScore);
-        score.setTotalFlags(totalFlags);
-        score.setRequiresReview(trustScore < safeInt(reviewRule.getThresholdValue()));
-        score.setHighRisk(trustScore < safeInt(highRiskRule.getThresholdValue()));
+        int highRiskTrustThreshold = highRiskTrustRule.getThresholdValue() != null
+                ? highRiskTrustRule.getThresholdValue()
+                : 40;
 
-        riskScoreRepository.save(score);
+        boolean requiresReview = trustScore <= reviewTrustThreshold;
+        boolean highRisk = trustScore <= highRiskTrustThreshold;
+
+        AttendanceRiskScore dailyScore =
+                attendanceRiskScoreRepository
+                        .findByEmployeeEmployeeIdAndAttendanceDate(employee.getEmployeeId(), attendanceDate)
+                        .orElse(
+                                AttendanceRiskScore.builder()
+                                        .employee(employee)
+                                        .attendanceDate(attendanceDate)
+                                        .riskScore(0)
+                                        .trustScore(100)
+                                        .totalFlags(0)
+                                        .requiresReview(false)
+                                        .highRisk(false)
+                                        .build()
+                        );
+
+        dailyScore.setRiskScore(riskScore);
+        dailyScore.setTrustScore(trustScore);
+        dailyScore.setTotalFlags(totalFlags);
+        dailyScore.setRequiresReview(requiresReview);
+        dailyScore.setHighRisk(highRisk);
+
+        attendanceRiskScoreRepository.save(dailyScore);
     }
 
-    private int safeInt(Integer value) {
+    private void updateCurrentBehaviorScore(Employee employee, LocalDate attendanceDate) {
+        AttendanceRiskScore dailyScore =
+                attendanceRiskScoreRepository
+                        .findByEmployeeEmployeeIdAndAttendanceDate(employee.getEmployeeId(), attendanceDate)
+                        .orElseThrow(() -> new ResourceNotFoundException("Daily attendance risk score not found"));
+
+        EmployeeBehaviorScore current =
+                employeeBehaviorScoreRepository
+                        .findByEmployeeEmployeeId(employee.getEmployeeId())
+                        .orElse(
+                                EmployeeBehaviorScore.builder()
+                                        .employee(employee)
+                                        .currentRiskScore(0)
+                                        .currentTrustScore(100)
+                                        .currentRiskLevel(RiskSeverity.LOW)
+                                        .totalFlagsSeen(0)
+                                        .totalHighRiskDays(0)
+                                        .updatedAt(LocalDateTime.now())
+                                        .build()
+                        );
+
+        int previousRisk = valueOrZero(current.getCurrentRiskScore());
+        int newRisk = (int) Math.round((previousRisk * 0.70) + (dailyScore.getRiskScore() * 0.30));
+        newRisk = clamp(newRisk, 0, 100);
+
+        int newTrust = clamp(100 - newRisk, 0, 100);
+
+        AttendanceRule highRiskTrustRule = attendanceRuleService.getRequiredRule(
+                AttendanceRuleKey.HIGH_RISK_TRUST_THRESHOLD
+        );
+        AttendanceRule reviewTrustRule = attendanceRuleService.getRequiredRule(
+                AttendanceRuleKey.REVIEW_TRUST_THRESHOLD
+        );
+
+        int highRiskTrustThreshold = highRiskTrustRule.getThresholdValue() != null
+                ? highRiskTrustRule.getThresholdValue()
+                : 40;
+
+        int reviewTrustThreshold = reviewTrustRule.getThresholdValue() != null
+                ? reviewTrustRule.getThresholdValue()
+                : 70;
+
+        RiskSeverity level;
+        if (newTrust <= highRiskTrustThreshold) {
+            level = RiskSeverity.HIGH;
+        } else if (newTrust <= reviewTrustThreshold) {
+            level = RiskSeverity.MEDIUM;
+        } else {
+            level = RiskSeverity.LOW;
+        }
+
+        int todayFlagCount = valueOrZero(dailyScore.getTotalFlags());
+
+        current.setCurrentRiskScore(newRisk);
+        current.setCurrentTrustScore(newTrust);
+        current.setCurrentRiskLevel(level);
+        current.setTotalFlagsSeen(valueOrZero(current.getTotalFlagsSeen()) + todayFlagCount);
+
+        if (Boolean.TRUE.equals(dailyScore.getHighRisk())) {
+            current.setTotalHighRiskDays(valueOrZero(current.getTotalHighRiskDays()) + 1);
+        }
+
+        current.setLastEvaluatedAt(LocalDateTime.now());
+        current.setUpdatedAt(LocalDateTime.now());
+
+        employeeBehaviorScoreRepository.save(current);
+    }
+
+    private long calculateWorkedMinutes(List<AttendanceRecord> dailyRecords) {
+        List<AttendanceRecord> ordered = dailyRecords.stream()
+                .filter(this::isUsableAttendanceRecord)
+                .sorted(Comparator.comparing(AttendanceRecord::getEventTime))
+                .toList();
+
+        long totalMinutes = 0;
+        LocalDateTime openCheckIn = null;
+
+        for (AttendanceRecord record : ordered) {
+            if (record.getType() == AttendanceType.IN) {
+                openCheckIn = record.getEventTime();
+            } else if (record.getType() == AttendanceType.OUT && openCheckIn != null) {
+                if (!record.getEventTime().isBefore(openCheckIn)) {
+                    totalMinutes += Duration.between(openCheckIn, record.getEventTime()).toMinutes();
+                }
+                openCheckIn = null;
+            }
+        }
+
+        return Math.max(totalMinutes, 0);
+    }
+
+    private boolean isUsableAttendanceRecord(AttendanceRecord record) {
+        return record != null
+                && record.getEventTime() != null
+                && record.getStatus() == AttendanceStatus.VALID;
+    }
+
+    private int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private int valueOrZero(Integer value) {
         return value == null ? 0 : value;
-    }
-
-    private RiskSeverity defaultSeverity(RiskSeverity value, RiskSeverity fallback) {
-        return value == null ? fallback : value;
     }
 }

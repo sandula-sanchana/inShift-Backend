@@ -12,17 +12,26 @@ import java.util.List;
 @Repository
 public interface AttendanceFlagRepository extends JpaRepository<AttendanceFlag, Long> {
 
-    List<AttendanceFlag> findAllByEmployeeEmployeeIdAndAttendanceDateOrderByDetectedAtDesc(
-            Long employeeId, LocalDate attendanceDate
+//    List<AttendanceFlag> findAllByEmployeeEmployeeIdAndAttendanceDateOrderByDetectedAtDesc(
+//            Long employeeId, LocalDate attendanceDate
+//    );
+//
+//    boolean existsByEmployeeEmployeeIdAndAttendanceDateAndFlagTypeAndResolvedFalse(
+//            Long employeeId, LocalDate attendanceDate, AttendanceFlagType flagType
+//    );
+//
+//    long countByEmployeeEmployeeIdAndDetectedAtAfter(
+//            Long employeeId, LocalDateTime after
+//    );
+//
+//    List<AttendanceFlag> findAllByAttendanceDateOrderByDetectedAtDesc(LocalDate attendanceDate);
+
+    void deleteByEmployeeEmployeeIdAndAttendanceDate(Long employeeId, LocalDate attendanceDate);
+
+    List<AttendanceFlag> findByEmployeeEmployeeIdAndAttendanceDateAndResolvedFalse(
+            Long employeeId,
+            LocalDate attendanceDate
     );
 
-    boolean existsByEmployeeEmployeeIdAndAttendanceDateAndFlagTypeAndResolvedFalse(
-            Long employeeId, LocalDate attendanceDate, AttendanceFlagType flagType
-    );
-
-    long countByEmployeeEmployeeIdAndDetectedAtAfter(
-            Long employeeId, LocalDateTime after
-    );
-
-    List<AttendanceFlag> findAllByAttendanceDateOrderByDetectedAtDesc(LocalDate attendanceDate);
+    List<AttendanceFlag> findByEmployeeEmployeeIdAndAttendanceDateOrderByDetectedAtDesc(Long employeeId, LocalDate attendanceDate);
 }
