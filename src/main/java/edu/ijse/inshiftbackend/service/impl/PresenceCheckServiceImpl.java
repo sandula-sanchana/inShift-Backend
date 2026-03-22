@@ -36,6 +36,13 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
     @Override
     @Transactional
     public PresenceCheckResponseDTO createPresenceCheck(PresenceCheckCreateDTO dto, String adminEmail) {
+
+        System.out.println("START createPresenceCheck");
+        System.out.println("dto employeeId = " + dto.getEmployeeId());
+        System.out.println("dto triggerReason = " + dto.getTriggerReason());
+        System.out.println("dto sourceExpected = " + dto.getSourceExpected());
+        System.out.println("dto dueInSeconds = " + dto.getDueInSeconds());
+
         Employee employee = employeeRepository.findById(dto.getEmployeeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
 
@@ -44,7 +51,10 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
                 PresenceCheckStatus.PENDING
         ).ifPresent(existing -> {
             throw new BadRequestException("Employee already has a pending presence check");
+
         });
+
+        System.out.println("NO pending check");
 
         LocalDateTime now = LocalDateTime.now();
         int dueInSeconds = dto.getDueInSeconds() != null && dto.getDueInSeconds() > 0
@@ -77,7 +87,19 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
                 .escalationLevel(0)
                 .build();
 
+        System.out.println("ABOUT TO SAVE");
+        System.out.println("entity triggerReason = " + presenceCheck.getTriggerReason());
+        System.out.println("entity riskLevel = " + presenceCheck.getRiskLevel());
+        System.out.println("entity status = " + presenceCheck.getStatus());
+        System.out.println("entity sourceExpected = " + presenceCheck.getSourceExpected());
+
+        //PresenceCheck saved = presenceCheckRepository.save(presenceCheck);
+
         PresenceCheck saved = presenceCheckRepository.save(presenceCheck);
+        System.out.println("SAVED id = " + saved.getId());
+
+
+
 
         try {
             presenceNotificationService.sendPresenceCheckNotification(saved);
@@ -116,6 +138,7 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
     @Override
     @Transactional
     public PresenceCheckResponseDTO respondToPresenceCheck(EmpPresenceCheckRespondDTO dto, String employeeEmail) {
+
         Employee employee = employeeRepository.findByEmail(employeeEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
 
@@ -145,6 +168,8 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
         presenceCheck.setLateResponse(late);
         presenceCheck.setMissedResponse(false);
         presenceCheck.setStatus(late ? PresenceCheckStatus.LATE : PresenceCheckStatus.RESPONDED);
+
+
 
         PresenceCheck saved = presenceCheckRepository.save(presenceCheck);
 

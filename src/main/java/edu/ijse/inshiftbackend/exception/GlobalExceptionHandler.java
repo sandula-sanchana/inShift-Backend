@@ -15,32 +15,20 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<APIResponse<String>>  generalExceptionHandler(Exception exception) {
-
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
-                new APIResponse<>(
-                        500,
-                        "Internal Server error",
-                        null
-                )
-        );
-
-    }
-
     @ExceptionHandler(BadRequestException.class)
     public ResponseEntity<APIResponse<String>> badRequestExceptionHandler(BadRequestException e) {
-        return new ResponseEntity<>(new APIResponse<>(400, e.getMessage(), null), HttpStatus.BAD_REQUEST);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new APIResponse<>(400, e.getMessage(), null));
     }
 
-    @ExceptionHandler
+    @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<APIResponse<String>> resourceNotFoundExceptionHandler(ResourceNotFoundException e) {
-        return new ResponseEntity<>(new APIResponse<>(404, e.getMessage(), null), HttpStatus.NOT_FOUND);
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new APIResponse<>(404, e.getMessage(), null));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<APIResponse<String>> handleValidationException(MethodArgumentNotValidException ex) {
-
         String errors = ex.getBindingResult()
                 .getFieldErrors()
                 .stream()
@@ -51,4 +39,15 @@ public class GlobalExceptionHandler {
                 .body(new APIResponse<>(400, errors, null));
     }
 
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<APIResponse<String>> generalExceptionHandler(Exception exception) {
+        exception.printStackTrace();
+
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new APIResponse<>(
+                        500,
+                        exception.getMessage() != null ? exception.getMessage() : "Internal Server error",
+                        null
+                ));
+    }
 }

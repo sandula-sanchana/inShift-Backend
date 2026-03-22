@@ -23,6 +23,5 @@ public class PresenceCheckCreateDTO {
 
     private String triggerDescription;
     private String adminNote;
-
     private Integer dueInSeconds;
 }
