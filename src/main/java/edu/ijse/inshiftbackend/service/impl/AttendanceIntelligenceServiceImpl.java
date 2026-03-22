@@ -385,7 +385,7 @@ public class AttendanceIntelligenceServiceImpl implements AttendanceIntelligence
                                         .updatedAt(LocalDateTime.now())
                                         .build()
                         );
-
+        // to calculate user current score i get 70% of total last + 30% of daily
         int previousRisk = valueOrZero(current.getCurrentRiskScore());
         int newRisk = (int) Math.round((previousRisk * 0.70) + (dailyScore.getRiskScore() * 0.30));
         newRisk = clamp(newRisk, 0, 100);
