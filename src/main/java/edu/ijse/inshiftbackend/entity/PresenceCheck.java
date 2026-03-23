@@ -90,4 +90,8 @@ public class PresenceCheck {
 
     @Column(nullable = false)
     private Integer escalationLevel;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "responding_device_id")
+    private EmployeeDevice respondingDevice;
 }

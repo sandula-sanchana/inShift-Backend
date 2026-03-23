@@ -10,13 +10,15 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class PasskeyRegisterStartDTO {
+public class DeviceEnrollRequestDTO {
+
+    @NotBlank(message = "Device fingerprint is required")
+    private String deviceFingerprint;
 
     @NotBlank(message = "Device name is required")
     private String deviceName;
 
-    @NotBlank(message = "Device fingerprint is required")
-    private String deviceFingerprint;
+    private String userAgent;
 
     @NotNull(message = "Requested trust type is required")
     private DeviceTrustType requestedTrustType;

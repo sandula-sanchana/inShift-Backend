@@ -7,6 +7,7 @@ import edu.ijse.inshiftbackend.entity.enums.*;
 import edu.ijse.inshiftbackend.repository.PresenceCheckRepository;
 import edu.ijse.inshiftbackend.service.PresenceCheckTriggerService;
 import edu.ijse.inshiftbackend.service.PresenceNotificationService;
+import edu.ijse.inshiftbackend.service.TrustedDeviceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +20,7 @@ public class PresenceCheckTriggerServiceImpl implements PresenceCheckTriggerServ
 
     private final PresenceCheckRepository presenceCheckRepository;
     private final PresenceNotificationService presenceNotificationService;
+    private final TrustedDeviceService trustedDeviceService;
 
     @Override
     @Transactional
@@ -46,7 +48,7 @@ public class PresenceCheckTriggerServiceImpl implements PresenceCheckTriggerServ
                 .triggerDescription(description)
                 .riskLevel(riskLevel)
                 .status(PresenceCheckStatus.PENDING)
-                .sourceExpected(PresenceCheckSourceExpected.MOBILE_BIOMETRIC)
+                .sourceExpected(resolveExpectedSource(employee))
                 .createdAt(now)
                 .dueAt(now.plusMinutes(responseMinutes))
                 .lateResponse(false)
@@ -66,6 +68,18 @@ public class PresenceCheckTriggerServiceImpl implements PresenceCheckTriggerServ
         }
 
         return check;
+    }
+
+    private PresenceCheckSourceExpected resolveExpectedSource(Employee employee) {
+        if (trustedDeviceService.hasApprovedCompanyPc(employee)) {
+            return PresenceCheckSourceExpected.COMPANY_PC;
+        }
+
+        if (trustedDeviceService.hasApprovedMobile(employee)) {
+            return PresenceCheckSourceExpected.MOBILE_BIOMETRIC;
+        }
+
+        return PresenceCheckSourceExpected.ANY;
     }
 
     private PresenceCheckRiskLevel calculateRiskLevel(PresenceCheckTriggerReason reason) {
@@ -104,7 +118,11 @@ public class PresenceCheckTriggerServiceImpl implements PresenceCheckTriggerServ
                 .triggerDescription(plan.getDescription())
                 .riskLevel(plan.getRiskLevel())
                 .status(PresenceCheckStatus.PENDING)
-                .sourceExpected(plan.getSourceExpected())
+                .sourceExpected(
+                        plan.getSourceExpected() == PresenceCheckSourceExpected.ANY
+                                ? resolveExpectedSource(plan.getEmployee())
+                                : plan.getSourceExpected()
+                )
                 .createdAt(now)
                 .dueAt(now.plusMinutes(plan.getDueInMinutes()))
                 .lateResponse(false)

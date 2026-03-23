@@ -4,12 +4,12 @@ import edu.ijse.inshiftbackend.dto.PresenceCheckCreateDTO;
 import edu.ijse.inshiftbackend.dto.EmpPresenceCheckRespondDTO;
 import edu.ijse.inshiftbackend.dto.response.PresenceCheckResponseDTO;
 import edu.ijse.inshiftbackend.entity.Employee;
+import edu.ijse.inshiftbackend.entity.EmployeeDevice;
 import edu.ijse.inshiftbackend.entity.PresenceCheck;
-import edu.ijse.inshiftbackend.entity.enums.PresenceCheckRiskLevel;
-import edu.ijse.inshiftbackend.entity.enums.PresenceCheckStatus;
-import edu.ijse.inshiftbackend.entity.enums.PresenceCheckTriggerReason;
+import edu.ijse.inshiftbackend.entity.enums.*;
 import edu.ijse.inshiftbackend.exception.custom.BadRequestException;
 import edu.ijse.inshiftbackend.exception.custom.ResourceNotFoundException;
+import edu.ijse.inshiftbackend.repository.EmployeeDeviceRepository;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
 import edu.ijse.inshiftbackend.repository.PresenceCheckRepository;
 import edu.ijse.inshiftbackend.service.PresenceCheckService;
@@ -22,7 +22,6 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 
-
 @Service
 @RequiredArgsConstructor
 public class PresenceCheckServiceImpl implements PresenceCheckService {
@@ -30,19 +29,13 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
     private final PresenceCheckRepository presenceCheckRepository;
     private final EmployeeRepository employeeRepository;
     private final PresenceNotificationService presenceNotificationService;
+    private final EmployeeDeviceRepository employeeDeviceRepository;
 
     private static final int DEFAULT_DUE_SECONDS = 120;
-    //this for admin manual presence checks
+
     @Override
     @Transactional
     public PresenceCheckResponseDTO createPresenceCheck(PresenceCheckCreateDTO dto, String adminEmail) {
-
-        System.out.println("START createPresenceCheck");
-        System.out.println("dto employeeId = " + dto.getEmployeeId());
-        System.out.println("dto triggerReason = " + dto.getTriggerReason());
-        System.out.println("dto sourceExpected = " + dto.getSourceExpected());
-        System.out.println("dto dueInSeconds = " + dto.getDueInSeconds());
-
         Employee employee = employeeRepository.findById(dto.getEmployeeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
 
@@ -51,10 +44,7 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
                 PresenceCheckStatus.PENDING
         ).ifPresent(existing -> {
             throw new BadRequestException("Employee already has a pending presence check");
-
         });
-
-        System.out.println("NO pending check");
 
         LocalDateTime now = LocalDateTime.now();
         int dueInSeconds = dto.getDueInSeconds() != null && dto.getDueInSeconds() > 0
@@ -85,21 +75,10 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
                 .escalated(false)
                 .escalatedAt(null)
                 .escalationLevel(0)
+                .respondingDevice(null)
                 .build();
 
-        System.out.println("ABOUT TO SAVE");
-        System.out.println("entity triggerReason = " + presenceCheck.getTriggerReason());
-        System.out.println("entity riskLevel = " + presenceCheck.getRiskLevel());
-        System.out.println("entity status = " + presenceCheck.getStatus());
-        System.out.println("entity sourceExpected = " + presenceCheck.getSourceExpected());
-
-        //PresenceCheck saved = presenceCheckRepository.save(presenceCheck);
-
         PresenceCheck saved = presenceCheckRepository.save(presenceCheck);
-        System.out.println("SAVED id = " + saved.getId());
-
-
-
 
         try {
             presenceNotificationService.sendPresenceCheckNotification(saved);
@@ -153,27 +132,72 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
             throw new BadRequestException("Presence check is not pending");
         }
 
+        EmployeeDevice device = employeeDeviceRepository
+                .findByEmployeeAndDeviceFingerprintAndApprovalStatusAndActiveTrue(
+                        employee,
+                        dto.getDeviceFingerprint(),
+                        DeviceApprovalStatus.APPROVED
+                )
+                .orElseThrow(() -> new BadRequestException("This device is not approved for presence verification"));
+
+        validateResponseByDeviceType(device, dto);
+
         LocalDateTime now = LocalDateTime.now();
         int delaySeconds = (int) Duration.between(presenceCheck.getCreatedAt(), now).getSeconds();
         boolean late = now.isAfter(presenceCheck.getDueAt());
 
         presenceCheck.setRespondedAt(now);
+        presenceCheck.setRespondingDevice(device);
         presenceCheck.setResponseSource(dto.getResponseSource());
-        presenceCheck.setResponseLatitude(dto.getLatitude());
-        presenceCheck.setResponseLongitude(dto.getLongitude());
-        presenceCheck.setResponseAccuracyMeters(dto.getAccuracyMeters());
-        presenceCheck.setResponseLocationText(dto.getLocationText());
+
+        if (device.getApprovedTrustType() == DeviceTrustType.COMPANY_PC) {
+            presenceCheck.setResponseLatitude(null);
+            presenceCheck.setResponseLongitude(null);
+            presenceCheck.setResponseAccuracyMeters(null);
+            presenceCheck.setResponseLocationText(null);
+        } else {
+            presenceCheck.setResponseLatitude(dto.getLatitude());
+            presenceCheck.setResponseLongitude(dto.getLongitude());
+            presenceCheck.setResponseAccuracyMeters(dto.getAccuracyMeters());
+            presenceCheck.setResponseLocationText(dto.getLocationText());
+        }
+
         presenceCheck.setResponseNote(dto.getResponseNote());
         presenceCheck.setResponseDelaySeconds(delaySeconds);
         presenceCheck.setLateResponse(late);
         presenceCheck.setMissedResponse(false);
         presenceCheck.setStatus(late ? PresenceCheckStatus.LATE : PresenceCheckStatus.RESPONDED);
 
-
-
         PresenceCheck saved = presenceCheckRepository.save(presenceCheck);
 
         return mapToDTO(saved);
+    }
+
+    private void validateResponseByDeviceType(EmployeeDevice device, EmpPresenceCheckRespondDTO dto) {
+        if (dto.getResponseSource() == null) {
+            throw new BadRequestException("Response source is required");
+        }
+
+        if (dto.getResponseSource() == PresenceCheckResponseSource.MANUAL_REVIEW) {
+            throw new BadRequestException("Manual review is not allowed for employee response");
+        }
+
+        switch (device.getApprovedTrustType()) {
+            case COMPANY_PC -> {
+                if (dto.getResponseSource() != PresenceCheckResponseSource.COMPANY_PC) {
+                    throw new BadRequestException("Company PC must respond using COMPANY_PC source");
+                }
+            }
+            case MOBILE -> {
+                if (dto.getResponseSource() != PresenceCheckResponseSource.MOBILE_GPS) {
+                    throw new BadRequestException("Mobile device must respond using MOBILE_GPS source");
+                }
+                if (dto.getLatitude() == null || dto.getLongitude() == null) {
+                    throw new BadRequestException("Latitude and longitude are required for mobile response");
+                }
+            }
+            default -> throw new BadRequestException("Unsupported device type");
+        }
     }
 
     @Override
@@ -221,6 +245,9 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
                 .notifiedAt(pc.getNotifiedAt())
                 .respondedAt(pc.getRespondedAt())
                 .responseSource(pc.getResponseSource())
+                .respondingDeviceFingerprint(
+                        pc.getRespondingDevice() != null ? pc.getRespondingDevice().getDeviceFingerprint() : null
+                )
                 .responseLatitude(pc.getResponseLatitude())
                 .responseLongitude(pc.getResponseLongitude())
                 .responseAccuracyMeters(pc.getResponseAccuracyMeters())

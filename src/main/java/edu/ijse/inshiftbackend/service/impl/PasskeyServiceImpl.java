@@ -5,12 +5,12 @@ import com.yubico.webauthn.data.*;
 import edu.ijse.inshiftbackend.dto.PasskeyAssertionVerifyDTO;
 import edu.ijse.inshiftbackend.dto.PasskeyRegisterStartDTO;
 import edu.ijse.inshiftbackend.dto.PasskeyRegisterVerifyDTO;
-import edu.ijse.inshiftbackend.entity.DeviceEnrollmentRequest;
 import edu.ijse.inshiftbackend.entity.Employee;
+import edu.ijse.inshiftbackend.entity.EmployeeDevice;
 import edu.ijse.inshiftbackend.entity.PasskeyCredential;
 import edu.ijse.inshiftbackend.entity.WebAuthnAssertionRequest;
 import edu.ijse.inshiftbackend.entity.WebAuthnRegistrationRequest;
-import edu.ijse.inshiftbackend.entity.enums.DeviceEnrollmentRequestStatus;
+import edu.ijse.inshiftbackend.entity.enums.DeviceTrustType;
 import edu.ijse.inshiftbackend.entity.enums.PasskeyCredentialStatus;
 import edu.ijse.inshiftbackend.entity.enums.WebAuthnChallengePurpose;
 import edu.ijse.inshiftbackend.exception.custom.BadRequestException;
@@ -20,9 +20,9 @@ import edu.ijse.inshiftbackend.repository.PasskeyCredentialRepository;
 import edu.ijse.inshiftbackend.repository.WebAuthnAssertionRequestRepository;
 import edu.ijse.inshiftbackend.repository.WebAuthnRegistrationRequestRepository;
 import edu.ijse.inshiftbackend.service.AuthSecurityService;
-import edu.ijse.inshiftbackend.service.DeviceEnrollmentRequestService;
 import edu.ijse.inshiftbackend.service.DeviceRecognitionService;
 import edu.ijse.inshiftbackend.service.PasskeyService;
+import edu.ijse.inshiftbackend.service.TrustedDeviceService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -44,7 +44,7 @@ public class PasskeyServiceImpl implements PasskeyService {
 
     private final AuthSecurityService authSecurityService;
     private final DeviceRecognitionService deviceRecognitionService;
-    private final DeviceEnrollmentRequestService enrollmentRequestService;
+    private final TrustedDeviceService trustedDeviceService;
 
     @Override
     public String getPasskeyRegisterResponse(
@@ -62,12 +62,23 @@ public class PasskeyServiceImpl implements PasskeyService {
             throw new BadRequestException("Device name is required");
         }
 
-        enrollmentRequestService.expireOldPendingRequests(employee);
+        if (dto.getDeviceFingerprint() == null || dto.getDeviceFingerprint().isBlank()) {
+            throw new BadRequestException("Device fingerprint is required");
+        }
 
         long activeCount = passkeyCredentialRepository.countByEmployeeAndActiveTrue(employee);
 
         // First passkey registration
         if (activeCount == 0) {
+            EmployeeDevice approvedDevice = trustedDeviceService.requireApprovedDevice(
+                    employee,
+                    dto.getDeviceFingerprint()
+            );
+
+            if (approvedDevice.getApprovedTrustType() != DeviceTrustType.MOBILE) {
+                throw new BadRequestException("Passkey registration is only allowed on approved mobile devices");
+            }
+
             ensureRecentPasswordAuth(employee, "Recent password authentication required to register first passkey");
             return createRegistrationRequest(employee, purpose);
         }
@@ -79,15 +90,20 @@ public class PasskeyServiceImpl implements PasskeyService {
             return createRegistrationRequest(employee, purpose);
         }
 
-        // New/unrecognized device => create pending request, do not allow immediate registration
-        enrollmentRequestService.createPendingReplacementRequest(
+        // New device must already be approved through /emp/device/enroll + admin flow
+        EmployeeDevice approvedDevice = trustedDeviceService.requireApprovedDevice(
                 employee,
-                dto.getDeviceName(),
-                userAgent,
-                ipAddress
+                dto.getDeviceFingerprint()
         );
 
-        throw new BadRequestException("New device registration request submitted for admin approval");
+        if (approvedDevice.getApprovedTrustType() != DeviceTrustType.MOBILE) {
+            throw new BadRequestException("Passkey registration is only allowed on approved mobile devices");
+        }
+
+        ensureRecentPasswordAuth(employee,
+                "Recent password authentication required to register passkey on a new approved device");
+
+        return createRegistrationRequest(employee, purpose);
     }
 
     private void ensureRecentPasswordAuth(Employee employee, String message) {
@@ -143,6 +159,10 @@ public class PasskeyServiceImpl implements PasskeyService {
             throw new BadRequestException("Device name is required");
         }
 
+        if (dto.getDeviceFingerprint() == null || dto.getDeviceFingerprint().isBlank()) {
+            throw new BadRequestException("Device fingerprint is required");
+        }
+
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
 
         Employee employee = employeeRepository.findByEmail(email)
@@ -158,7 +178,6 @@ public class PasskeyServiceImpl implements PasskeyService {
 
         long activeCount = passkeyCredentialRepository.countByEmployeeAndActiveTrue(employee);
 
-        DeviceEnrollmentRequest approvedRequest = null;
         boolean sameDeviceReEnrollment = false;
 
         if (activeCount >= 1) {
@@ -168,12 +187,28 @@ public class PasskeyServiceImpl implements PasskeyService {
                 sameDeviceReEnrollment = true;
                 ensureRecentPasswordAuth(employee, "Recent password authentication required for re-enrollment");
             } else {
-                approvedRequest = enrollmentRequestService.getApprovedValidRequest(employee);
-                if (approvedRequest.getStatus() != DeviceEnrollmentRequestStatus.APPROVED) {
-                    throw new BadRequestException("Approved enrollment request required");
+                EmployeeDevice approvedDevice = trustedDeviceService.requireApprovedDevice(
+                        employee,
+                        dto.getDeviceFingerprint()
+                );
+
+                if (approvedDevice.getApprovedTrustType() != DeviceTrustType.MOBILE) {
+                    throw new BadRequestException("Passkey can only be registered on approved mobile devices");
                 }
+
+                ensureRecentPasswordAuth(employee,
+                        "Recent password authentication required for new approved mobile device registration");
             }
         } else {
+            EmployeeDevice approvedDevice = trustedDeviceService.requireApprovedDevice(
+                    employee,
+                    dto.getDeviceFingerprint()
+            );
+
+            if (approvedDevice.getApprovedTrustType() != DeviceTrustType.MOBILE) {
+                throw new BadRequestException("Passkey can only be registered on approved mobile devices");
+            }
+
             ensureRecentPasswordAuth(employee, "Recent password authentication required");
         }
 
@@ -211,19 +246,6 @@ public class PasskeyServiceImpl implements PasskeyService {
 
             passkeyCredentialRepository.save(newCredential);
 
-
-            if (approvedRequest != null) {
-                revokeOtherActiveCredentials(
-                        employee,
-                        newCredential.getCredentialId(),
-                        "Replaced by approved new device enrollment"
-                );
-
-                approvedRequest.setStatus(DeviceEnrollmentRequestStatus.COMPLETED);
-                approvedRequest.setCompletedAt(LocalDateTime.now());
-            }
-
-            // Same-device re-enrollment flow
             if (sameDeviceReEnrollment) {
                 revokeOtherActiveCredentials(
                         employee,

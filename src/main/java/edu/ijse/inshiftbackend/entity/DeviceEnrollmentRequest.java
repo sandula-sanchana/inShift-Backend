@@ -2,6 +2,7 @@ package edu.ijse.inshiftbackend.entity;
 
 import edu.ijse.inshiftbackend.entity.enums.DeviceEnrollmentRequestStatus;
 import edu.ijse.inshiftbackend.entity.enums.DeviceEnrollmentRequestType;
+import edu.ijse.inshiftbackend.entity.enums.DeviceTrustType;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -24,6 +25,10 @@ public class DeviceEnrollmentRequest {
     @JoinColumn(name = "employee_id", nullable = false)
     private Employee employee;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "employee_device_id")
+    private EmployeeDevice employeeDevice;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 40)
     private DeviceEnrollmentRequestType requestType;
@@ -31,6 +36,14 @@ public class DeviceEnrollmentRequest {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private DeviceEnrollmentRequestStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 30)
+    private DeviceTrustType requestedTrustType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 30)
+    private DeviceTrustType approvedTrustType;
 
     @Column(length = 150)
     private String requestedDeviceName;

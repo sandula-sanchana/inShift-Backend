@@ -12,6 +12,7 @@ import edu.ijse.inshiftbackend.repository.EmployeeBehaviorScoreRepository;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
 import edu.ijse.inshiftbackend.repository.PresenceCheckPlanRepository;
 import edu.ijse.inshiftbackend.service.PresenceCheckPlanningService;
+import edu.ijse.inshiftbackend.service.TrustedDeviceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +31,7 @@ public class PresenceCheckPlanningServiceImpl implements PresenceCheckPlanningSe
     private final EmployeeRepository employeeRepository;
     private final EmployeeBehaviorScoreRepository employeeBehaviorScoreRepository;
     private final PresenceCheckPlanRepository presenceCheckPlanRepository;
+    private final TrustedDeviceService trustedDeviceService;
 
     private final Random random = new Random();
 
@@ -69,9 +71,9 @@ public class PresenceCheckPlanningServiceImpl implements PresenceCheckPlanningSe
         int planCount = resolvePlanCount(currentRiskScore);
         PresenceCheckRiskLevel riskLevel = resolveRiskLevel(currentRiskScore);
         int dueInMinutes = resolveDueWindowMinutes(currentRiskScore);
+        PresenceCheckSourceExpected expectedSource = resolveExpectedSource(employee);
 
         List<LocalDateTime> randomTimes = generateRandomTimesForDay(attendanceDate, planCount);
-
         List<PresenceCheckPlan> plans = new ArrayList<>();
 
         for (int i = 0; i < randomTimes.size(); i++) {
@@ -80,7 +82,7 @@ public class PresenceCheckPlanningServiceImpl implements PresenceCheckPlanningSe
                     .attendanceDate(attendanceDate)
                     .triggerReason(PresenceCheckTriggerReason.RANDOM)
                     .riskLevel(riskLevel)
-                    .sourceExpected(PresenceCheckSourceExpected.MOBILE_BIOMETRIC)
+                    .sourceExpected(expectedSource)
                     .status(PresenceCheckPlanStatus.PLANNED)
                     .description("Risk-adjusted random presence verification")
                     .plannedAt(randomTimes.get(i))
@@ -111,6 +113,18 @@ public class PresenceCheckPlanningServiceImpl implements PresenceCheckPlanningSe
         }
     }
 
+    private PresenceCheckSourceExpected resolveExpectedSource(Employee employee) {
+        if (trustedDeviceService.hasApprovedCompanyPc(employee)) {
+            return PresenceCheckSourceExpected.COMPANY_PC;
+        }
+
+        if (trustedDeviceService.hasApprovedMobile(employee)) {
+            return PresenceCheckSourceExpected.MOBILE_BIOMETRIC;
+        }
+
+        return PresenceCheckSourceExpected.ANY;
+    }
+
     private int resolvePlanCount(int currentRiskScore) {
         if (currentRiskScore >= 75) return 4;
         if (currentRiskScore >= 50) return 3;
@@ -132,7 +146,6 @@ public class PresenceCheckPlanningServiceImpl implements PresenceCheckPlanningSe
     }
 
     private List<LocalDateTime> generateRandomTimesForDay(LocalDate date, int count) {
-       // 9 t0 5
         LocalDateTime start = date.atTime(9, 0);
         LocalDateTime end = date.atTime(17, 0);
 

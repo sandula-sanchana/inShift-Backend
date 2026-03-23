@@ -36,6 +36,8 @@ public class PresenceCheckResponseDTO {
     private LocalDateTime respondedAt;
 
     private PresenceCheckResponseSource responseSource;
+    private String respondingDeviceFingerprint;
+
     private Double responseLatitude;
     private Double responseLongitude;
     private Double responseAccuracyMeters;

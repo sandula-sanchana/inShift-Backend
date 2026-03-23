@@ -1,6 +1,7 @@
 package edu.ijse.inshiftbackend.dto;
 
 import edu.ijse.inshiftbackend.entity.enums.PresenceCheckResponseSource;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
@@ -13,6 +14,9 @@ public class EmpPresenceCheckRespondDTO {
 
     @NotNull(message = "Presence check ID is required")
     private Long presenceCheckId;
+
+    @NotBlank(message = "Device fingerprint is required")
+    private String deviceFingerprint;
 
     @NotNull(message = "Response source is required")
     private PresenceCheckResponseSource responseSource;

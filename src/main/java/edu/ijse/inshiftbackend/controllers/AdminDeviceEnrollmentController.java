@@ -36,7 +36,12 @@ public class AdminDeviceEnrollmentController {
             @Valid @RequestBody DeviceEnrollmentDecisionDTO dto
     ) {
         if (Boolean.TRUE.equals(dto.getApprove())) {
-            enrollmentRequestService.approveRequest(id, dto.getAdminComment());
+            enrollmentRequestService.approveRequest(
+                    id,
+                    dto.getApprovedTrustType(),
+                    dto.getAdminComment()
+            );
+
             return new APIResponse<>(
                     200,
                     "Enrollment request approved",
@@ -45,6 +50,7 @@ public class AdminDeviceEnrollmentController {
         }
 
         enrollmentRequestService.rejectRequest(id, dto.getAdminComment());
+
         return new APIResponse<>(
                 200,
                 "Enrollment request rejected",
