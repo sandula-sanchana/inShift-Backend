@@ -7,6 +7,7 @@ import edu.ijse.inshiftbackend.entity.enums.PresenceCheckPlanStatus;
 import edu.ijse.inshiftbackend.entity.enums.PresenceCheckRiskLevel;
 import edu.ijse.inshiftbackend.entity.enums.PresenceCheckSourceExpected;
 import edu.ijse.inshiftbackend.entity.enums.PresenceCheckTriggerReason;
+import edu.ijse.inshiftbackend.exception.custom.BadRequestException;
 import edu.ijse.inshiftbackend.exception.custom.ResourceNotFoundException;
 import edu.ijse.inshiftbackend.repository.EmployeeBehaviorScoreRepository;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
@@ -17,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -38,6 +40,14 @@ public class PresenceCheckPlanningServiceImpl implements PresenceCheckPlanningSe
     @Override
     @Transactional
     public List<PresenceCheckPlan> generateDailyPlansForEmployee(Long employeeId, LocalDate attendanceDate) {
+        if (employeeId == null) {
+            throw new BadRequestException("Employee id is required");
+        }
+
+        if (attendanceDate == null) {
+            throw new BadRequestException("Attendance date is required");
+        }
+
         Employee employee = employeeRepository.findById(employeeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
 
@@ -75,6 +85,7 @@ public class PresenceCheckPlanningServiceImpl implements PresenceCheckPlanningSe
 
         List<LocalDateTime> randomTimes = generateRandomTimesForDay(attendanceDate, planCount);
         List<PresenceCheckPlan> plans = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
 
         for (int i = 0; i < randomTimes.size(); i++) {
             PresenceCheckPlan plan = PresenceCheckPlan.builder()
@@ -89,7 +100,7 @@ public class PresenceCheckPlanningServiceImpl implements PresenceCheckPlanningSe
                     .triggeredAt(null)
                     .dueInMinutes(dueInMinutes)
                     .sequenceNo(i + 1)
-                    .createdAt(LocalDateTime.now())
+                    .createdAt(now)
                     .build();
 
             plans.add(plan);
@@ -101,6 +112,10 @@ public class PresenceCheckPlanningServiceImpl implements PresenceCheckPlanningSe
     @Override
     @Transactional
     public void generateDailyPlansForAllEligibleEmployees(LocalDate attendanceDate) {
+        if (attendanceDate == null) {
+            throw new BadRequestException("Attendance date is required");
+        }
+
         List<Employee> employees = employeeRepository.findAllByActiveTrue();
 
         for (Employee employee : employees) {
@@ -149,16 +164,29 @@ public class PresenceCheckPlanningServiceImpl implements PresenceCheckPlanningSe
         LocalDateTime start = date.atTime(9, 0);
         LocalDateTime end = date.atTime(17, 0);
 
-        long totalMinutes = java.time.Duration.between(start, end).toMinutes();
+        long totalMinutes = Duration.between(start, end).toMinutes();
+        if (totalMinutes <= 0) {
+            throw new BadRequestException("Invalid planning window for presence checks");
+        }
+
         List<LocalDateTime> result = new ArrayList<>();
 
-        for (int i = 0; i < count; i++) {
+        int safeCount = Math.max(1, count);
+
+        while (result.size() < safeCount) {
             int randomMinute = random.nextInt((int) totalMinutes);
-            result.add(start.plusMinutes(randomMinute));
+            LocalDateTime candidate = start.plusMinutes(randomMinute);
+
+            if (!result.contains(candidate)) {
+                result.add(candidate);
+            }
+
+            if (result.size() >= totalMinutes) {
+                break;
+            }
         }
 
         return result.stream()
-                .distinct()
                 .sorted(Comparator.naturalOrder())
                 .toList();
     }

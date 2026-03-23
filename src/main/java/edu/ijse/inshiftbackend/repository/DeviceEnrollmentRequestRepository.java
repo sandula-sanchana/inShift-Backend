@@ -2,6 +2,7 @@ package edu.ijse.inshiftbackend.repository;
 
 import edu.ijse.inshiftbackend.entity.DeviceEnrollmentRequest;
 import edu.ijse.inshiftbackend.entity.Employee;
+import edu.ijse.inshiftbackend.entity.EmployeeDevice;
 import edu.ijse.inshiftbackend.entity.enums.DeviceEnrollmentRequestStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -22,4 +23,9 @@ public interface DeviceEnrollmentRequestRepository extends JpaRepository<DeviceE
     List<DeviceEnrollmentRequest> findByStatusOrderByCreatedAtDesc(DeviceEnrollmentRequestStatus status);
 
     List<DeviceEnrollmentRequest> findByEmployeeOrderByCreatedAtDesc(Employee employee);
+
+    Optional<DeviceEnrollmentRequest> findTopByEmployeeDeviceAndStatusInOrderByCreatedAtDesc(
+            EmployeeDevice employeeDevice,
+            List<DeviceEnrollmentRequestStatus> statuses
+    );
 }

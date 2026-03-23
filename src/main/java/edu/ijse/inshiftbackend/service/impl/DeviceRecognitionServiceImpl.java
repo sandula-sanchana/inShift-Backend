@@ -17,14 +17,27 @@ public class DeviceRecognitionServiceImpl implements DeviceRecognitionService {
 
     @Override
     public boolean isSameDeviceLike(Employee employee, String deviceName, String userAgent) {
-        List<PasskeyCredential> activeCredentials = passkeyCredentialRepository.findByEmployeeAndActiveTrue(employee);
+        if (employee == null) {
+            return false;
+        }
 
         String normalizedDeviceName = normalize(deviceName);
         String normalizedUserAgent = normalize(userAgent);
 
-        return activeCredentials.stream().anyMatch(c ->
-                normalize(c.getDeviceName()).equals(normalizedDeviceName) &&
-                        normalize(c.getUserAgent()).equals(normalizedUserAgent)
+        if (normalizedDeviceName.isBlank() || normalizedUserAgent.isBlank()) {
+            return false;
+        }
+
+        List<PasskeyCredential> activeCredentials =
+                passkeyCredentialRepository.findByEmployeeAndActiveTrue(employee);
+
+        if (activeCredentials == null || activeCredentials.isEmpty()) {
+            return false;
+        }
+
+        return activeCredentials.stream().anyMatch(credential ->
+                normalizedDeviceName.equals(normalize(credential.getDeviceName())) &&
+                        normalizedUserAgent.equals(normalize(credential.getUserAgent()))
         );
     }
 

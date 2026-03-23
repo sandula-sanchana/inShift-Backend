@@ -22,6 +22,10 @@ public class PresenceNotificationServiceImpl implements PresenceNotificationServ
 
     @Override
     public void sendPresenceCheckNotification(PresenceCheck presenceCheck) {
+        if (presenceCheck == null || presenceCheck.getEmployee() == null) {
+            return;
+        }
+
         List<EmployeeDeviceToken> activeTokens =
                 employeeDeviceFCMTokenRepository.findAllByEmployeeAndActiveTrue(
                         presenceCheck.getEmployee()
@@ -32,14 +36,15 @@ public class PresenceNotificationServiceImpl implements PresenceNotificationServ
         }
 
         String title = "Presence verification required";
-        String body = "Please confirm your presence now.";
+        String body = buildNotificationBody(presenceCheck);
 
-        Map<String, String> data = new HashMap<>();
-        data.put("type", "PRESENCE_CHECK");
-        data.put("presenceCheckId", String.valueOf(presenceCheck.getId()));
-        data.put("url", "/emp/verify?presenceCheckId=" + presenceCheck.getId());
+        Map<String, String> data = buildNotificationData(presenceCheck);
 
         for (EmployeeDeviceToken tokenEntity : activeTokens) {
+            if (tokenEntity == null || tokenEntity.getFcmToken() == null || tokenEntity.getFcmToken().isBlank()) {
+                continue;
+            }
+
             try {
                 pushNotificationService.sendToToken(
                         tokenEntity.getFcmToken(),
@@ -50,10 +55,37 @@ public class PresenceNotificationServiceImpl implements PresenceNotificationServ
 
                 tokenEntity.setLastUsedAt(LocalDateTime.now());
                 employeeDeviceFCMTokenRepository.save(tokenEntity);
+
             } catch (Exception e) {
-                System.err.println("Failed to send push to token id "
-                        + tokenEntity.getId() + ": " + e.getMessage());
+                System.err.println(
+                        "Failed to send presence notification to device token id "
+                                + tokenEntity.getId() + ": " + e.getMessage()
+                );
             }
         }
+    }
+
+    private String buildNotificationBody(PresenceCheck presenceCheck) {
+        if (presenceCheck.getSourceExpected() == null) {
+            return "Please confirm your presence now.";
+        }
+
+        return switch (presenceCheck.getSourceExpected()) {
+            case COMPANY_PC -> "Presence check available. Please confirm from your approved company PC.";
+            case MOBILE_BIOMETRIC -> "Presence check available. Please confirm from your approved mobile device.";
+            case ANY -> "Please confirm your presence now.";
+        };
+    }
+
+    private Map<String, String> buildNotificationData(PresenceCheck presenceCheck) {
+        Map<String, String> data = new HashMap<>();
+        data.put("type", "PRESENCE_CHECK");
+        data.put("presenceCheckId", String.valueOf(presenceCheck.getId()));
+        data.put("sourceExpected",
+                presenceCheck.getSourceExpected() != null
+                        ? presenceCheck.getSourceExpected().name()
+                        : "ANY");
+        data.put("url", "/emp/presence-check");
+        return data;
     }
 }

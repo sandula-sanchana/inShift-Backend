@@ -9,6 +9,7 @@ import edu.ijse.inshiftbackend.entity.enums.DeviceApprovalStatus;
 import edu.ijse.inshiftbackend.entity.enums.DeviceEnrollmentRequestStatus;
 import edu.ijse.inshiftbackend.entity.enums.DeviceEnrollmentRequestType;
 import edu.ijse.inshiftbackend.entity.enums.DeviceTrustType;
+import edu.ijse.inshiftbackend.exception.custom.BadRequestException;
 import edu.ijse.inshiftbackend.exception.custom.ResourceNotFoundException;
 import edu.ijse.inshiftbackend.repository.DeviceEnrollmentRequestRepository;
 import edu.ijse.inshiftbackend.repository.EmployeeDeviceRepository;
@@ -32,9 +33,12 @@ public class EmployeeDeviceServiceImpl implements EmployeeDeviceService {
     @Override
     @Transactional
     public DeviceEnrollResponseDTO enrollMyDevice(DeviceEnrollRequestDTO dto, String employeeEmail) {
+        validateEnrollRequest(dto);
 
         Employee employee = employeeRepository.findByEmail(employeeEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
+
+        LocalDateTime now = LocalDateTime.now();
 
         EmployeeDevice existingDevice = employeeDeviceRepository
                 .findByEmployeeAndDeviceFingerprintAndActiveTrue(employee, dto.getDeviceFingerprint())
@@ -47,12 +51,19 @@ public class EmployeeDeviceServiceImpl implements EmployeeDeviceService {
 
             EmployeeDevice saved = employeeDeviceRepository.save(existingDevice);
 
+            String message = switch (saved.getApprovalStatus()) {
+                case APPROVED -> "Device already enrolled and approved";
+                case PENDING -> "Device already enrolled and pending admin approval";
+                case REJECTED -> "Device was previously rejected. Please contact admin";
+                case REVOKED -> "Device access has been revoked. Please contact admin";
+            };
+
             return DeviceEnrollResponseDTO.builder()
                     .deviceId(saved.getId())
                     .deviceFingerprint(saved.getDeviceFingerprint())
                     .approvalStatus(saved.getApprovalStatus())
                     .approvedTrustType(saved.getApprovedTrustType())
-                    .message("Device already enrolled")
+                    .message(message)
                     .build();
         }
 
@@ -86,8 +97,6 @@ public class EmployeeDeviceServiceImpl implements EmployeeDeviceService {
             message = "Device enrolled and pending admin approval";
         }
 
-        LocalDateTime now = LocalDateTime.now();
-
         EmployeeDevice device = EmployeeDevice.builder()
                 .employee(employee)
                 .deviceFingerprint(dto.getDeviceFingerprint())
@@ -104,30 +113,7 @@ public class EmployeeDeviceServiceImpl implements EmployeeDeviceService {
         EmployeeDevice saved = employeeDeviceRepository.save(device);
 
         if (approvalStatus == DeviceApprovalStatus.PENDING) {
-            boolean alreadyPendingRequest = deviceEnrollmentRequestRepository.existsByEmployeeAndStatusIn(
-                    employee,
-                    List.of(DeviceEnrollmentRequestStatus.PENDING, DeviceEnrollmentRequestStatus.APPROVED)
-            );
-
-            if (!alreadyPendingRequest) {
-                DeviceEnrollmentRequest request = DeviceEnrollmentRequest.builder()
-                        .employee(employee)
-                        .employeeDevice(saved)
-                        .requestType(DeviceEnrollmentRequestType.NEW_DEVICE_REPLACEMENT)
-                        .status(DeviceEnrollmentRequestStatus.PENDING)
-                        .requestedTrustType(dto.getRequestedTrustType())
-                        .approvedTrustType(null)
-                        .requestedDeviceName(dto.getDeviceName())
-                        .requestedUserAgent(dto.getUserAgent())
-                        .requestReason("New device enrolled and waiting for admin approval")
-                        .riskScoreImpact(20)
-                        .createdAt(now)
-                        .expiresAt(now.plusHours(24))
-                        .completedAt(null)
-                        .build();
-
-                deviceEnrollmentRequestRepository.save(request);
-            }
+            createPendingEnrollmentRequestIfMissing(employee, saved, dto, now);
         }
 
         return DeviceEnrollResponseDTO.builder()
@@ -137,5 +123,70 @@ public class EmployeeDeviceServiceImpl implements EmployeeDeviceService {
                 .approvedTrustType(saved.getApprovedTrustType())
                 .message(message)
                 .build();
+    }
+
+    private void createPendingEnrollmentRequestIfMissing(
+            Employee employee,
+            EmployeeDevice device,
+            DeviceEnrollRequestDTO dto,
+            LocalDateTime now
+    ) {
+        boolean employeeAlreadyHasPendingOrApprovedRequest =
+                deviceEnrollmentRequestRepository.existsByEmployeeAndStatusIn(
+                        employee,
+                        List.of(DeviceEnrollmentRequestStatus.PENDING, DeviceEnrollmentRequestStatus.APPROVED)
+                );
+
+        if (employeeAlreadyHasPendingOrApprovedRequest) {
+            return;
+        }
+
+        boolean sameDeviceAlreadyHasPendingRequest =
+                deviceEnrollmentRequestRepository
+                        .findTopByEmployeeDeviceAndStatusInOrderByCreatedAtDesc(
+                                device,
+                                List.of(DeviceEnrollmentRequestStatus.PENDING, DeviceEnrollmentRequestStatus.APPROVED)
+                        )
+                        .isPresent();
+
+        if (sameDeviceAlreadyHasPendingRequest) {
+            return;
+        }
+
+        DeviceEnrollmentRequest request = DeviceEnrollmentRequest.builder()
+                .employee(employee)
+                .employeeDevice(device)
+                .requestType(DeviceEnrollmentRequestType.NEW_DEVICE_REPLACEMENT)
+                .status(DeviceEnrollmentRequestStatus.PENDING)
+                .requestedTrustType(dto.getRequestedTrustType())
+                .approvedTrustType(null)
+                .requestedDeviceName(dto.getDeviceName())
+                .requestedUserAgent(dto.getUserAgent())
+                .requestReason("New device enrolled and waiting for admin approval")
+                .riskScoreImpact(20)
+                .createdAt(now)
+                .expiresAt(now.plusHours(24))
+                .completedAt(null)
+                .build();
+
+        deviceEnrollmentRequestRepository.save(request);
+    }
+
+    private void validateEnrollRequest(DeviceEnrollRequestDTO dto) {
+        if (dto == null) {
+            throw new BadRequestException("Device enrollment request is required");
+        }
+
+        if (dto.getDeviceFingerprint() == null || dto.getDeviceFingerprint().isBlank()) {
+            throw new BadRequestException("Device fingerprint is required");
+        }
+
+        if (dto.getDeviceName() == null || dto.getDeviceName().isBlank()) {
+            throw new BadRequestException("Device name is required");
+        }
+
+        if (dto.getRequestedTrustType() == null) {
+            throw new BadRequestException("Requested trust type is required");
+        }
     }
 }

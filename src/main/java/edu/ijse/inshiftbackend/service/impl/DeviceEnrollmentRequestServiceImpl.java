@@ -43,6 +43,22 @@ public class DeviceEnrollmentRequestServiceImpl implements DeviceEnrollmentReque
             String ipAddress,
             DeviceTrustType requestedTrustType
     ) {
+        if (employee == null) {
+            throw new BadRequestException("Employee is required");
+        }
+
+        if (deviceFingerprint == null || deviceFingerprint.isBlank()) {
+            throw new BadRequestException("Device fingerprint is required");
+        }
+
+        if (deviceName == null || deviceName.isBlank()) {
+            throw new BadRequestException("Device name is required");
+        }
+
+        if (requestedTrustType == null) {
+            throw new BadRequestException("Requested trust type is required");
+        }
+
         expireOldPendingRequests(employee);
 
         boolean alreadyPending = requestRepository.existsByEmployeeAndStatusIn(
@@ -54,13 +70,14 @@ public class DeviceEnrollmentRequestServiceImpl implements DeviceEnrollmentReque
             throw new BadRequestException("A device enrollment request is already pending or approved");
         }
 
+        EmployeeDevice employeeDevice = employeeDeviceRepository
+                .findByEmployeeAndDeviceFingerprintAndActiveTrue(employee, deviceFingerprint)
+                .orElseThrow(() ->
+                        new BadRequestException("Device must be enrolled before requesting approval"));
+
         PasskeyCredential existingCredential = passkeyCredentialRepository
                 .findTopByEmployeeAndActiveTrueOrderByCreatedAtDesc(employee)
                 .orElse(null);
-
-        EmployeeDevice employeeDevice = employeeDeviceRepository
-                .findByEmployeeAndDeviceFingerprintAndActiveTrue(employee, deviceFingerprint)
-                .orElseThrow(() -> new BadRequestException("Device must be enrolled before requesting approval"));
 
         DeviceEnrollmentRequest request = DeviceEnrollmentRequest.builder()
                 .employee(employee)
@@ -72,7 +89,7 @@ public class DeviceEnrollmentRequestServiceImpl implements DeviceEnrollmentReque
                 .requestedDeviceName(deviceName)
                 .requestedUserAgent(userAgent)
                 .requestedIpAddress(ipAddress)
-                .requestReason("New device requested while active passkey already exists")
+                .requestReason("New device requested while an active trusted device/passkey already exists")
                 .riskScoreImpact(35)
                 .existingCredentialToReplace(existingCredential)
                 .createdAt(LocalDateTime.now())
@@ -85,6 +102,10 @@ public class DeviceEnrollmentRequestServiceImpl implements DeviceEnrollmentReque
 
     @Override
     public DeviceEnrollmentRequest getApprovedValidRequest(Employee employee) {
+        if (employee == null) {
+            throw new BadRequestException("Employee is required");
+        }
+
         return requestRepository
                 .findTopByEmployeeAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
                         employee,
@@ -97,6 +118,10 @@ public class DeviceEnrollmentRequestServiceImpl implements DeviceEnrollmentReque
     @Override
     @Transactional
     public void expireOldPendingRequests(Employee employee) {
+        if (employee == null) {
+            return;
+        }
+
         List<DeviceEnrollmentRequest> requests = requestRepository.findByEmployeeOrderByCreatedAtDesc(employee);
         LocalDateTime now = LocalDateTime.now();
 
@@ -109,11 +134,14 @@ public class DeviceEnrollmentRequestServiceImpl implements DeviceEnrollmentReque
                 req.setStatus(DeviceEnrollmentRequestStatus.EXPIRED);
                 req.setCompletedAt(now);
 
-                if (req.getEmployeeDevice() != null &&
-                        req.getEmployeeDevice().getApprovalStatus() == DeviceApprovalStatus.PENDING) {
-                    req.getEmployeeDevice().setApprovalStatus(DeviceApprovalStatus.REJECTED);
-                    req.getEmployeeDevice().setReviewedAt(now);
+                EmployeeDevice device = req.getEmployeeDevice();
+                if (device != null && device.getApprovalStatus() == DeviceApprovalStatus.PENDING) {
+                    device.setApprovalStatus(DeviceApprovalStatus.REJECTED);
+                    device.setReviewedAt(now);
+                    employeeDeviceRepository.save(device);
                 }
+
+                requestRepository.save(req);
             }
         }
     }
@@ -136,21 +164,25 @@ public class DeviceEnrollmentRequestServiceImpl implements DeviceEnrollmentReque
         Employee admin = employeeRepository.findByEmail(adminEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("Admin not found"));
 
+        LocalDateTime now = LocalDateTime.now();
+
         request.setStatus(DeviceEnrollmentRequestStatus.APPROVED);
         request.setApprovedTrustType(approvedTrustType);
         request.setApprovedBy(admin);
-        request.setApprovedAt(LocalDateTime.now());
+        request.setApprovedAt(now);
         request.setAdminComment(adminComment);
-        request.setCompletedAt(LocalDateTime.now());
+        request.setCompletedAt(now);
 
         EmployeeDevice device = request.getEmployeeDevice();
         if (device != null) {
             device.setApprovalStatus(DeviceApprovalStatus.APPROVED);
             device.setApprovedTrustType(approvedTrustType);
-            device.setReviewedAt(LocalDateTime.now());
+            device.setReviewedAt(now);
             device.setActive(true);
             employeeDeviceRepository.save(device);
         }
+
+        requestRepository.save(request);
     }
 
     @Override
@@ -163,61 +195,69 @@ public class DeviceEnrollmentRequestServiceImpl implements DeviceEnrollmentReque
             throw new BadRequestException("Only pending requests can be rejected");
         }
 
+        LocalDateTime now = LocalDateTime.now();
+
         request.setStatus(DeviceEnrollmentRequestStatus.REJECTED);
         request.setAdminComment(adminComment);
-        request.setCompletedAt(LocalDateTime.now());
+        request.setCompletedAt(now);
 
         EmployeeDevice device = request.getEmployeeDevice();
         if (device != null) {
             device.setApprovalStatus(DeviceApprovalStatus.REJECTED);
-            device.setReviewedAt(LocalDateTime.now());
+            device.setReviewedAt(now);
             employeeDeviceRepository.save(device);
         }
+
+        requestRepository.save(request);
     }
 
     @Override
     public List<AdminDeviceEnrollmentRequestResponseDTO> getPendingRequests() {
         return requestRepository.findByStatusOrderByCreatedAtDesc(DeviceEnrollmentRequestStatus.PENDING)
                 .stream()
-                .map(req -> AdminDeviceEnrollmentRequestResponseDTO.builder()
-                        .id(req.getId())
-                        .employeeName(req.getEmployee().getFullName())
-                        .employeeId(req.getEmployee().getEmployeeId())
-                        .status(req.getStatus().name())
-                        .requestType(req.getRequestType().name())
-                        .employeeDeviceId(req.getEmployeeDevice() != null ? req.getEmployeeDevice().getId() : null)
-                        .deviceFingerprint(
-                                req.getEmployeeDevice() != null ? req.getEmployeeDevice().getDeviceFingerprint() : null
-                        )
-                        .requestedTrustType(
-                                req.getRequestedTrustType() != null ? req.getRequestedTrustType().name() : null
-                        )
-                        .approvedTrustType(
-                                req.getApprovedTrustType() != null ? req.getApprovedTrustType().name() : null
-                        )
-                        .requestedDeviceName(req.getRequestedDeviceName())
-                        .requestedUserAgent(req.getRequestedUserAgent())
-                        .requestedPlatform(req.getRequestedPlatform())
-                        .requestedBrowser(req.getRequestedBrowser())
-                        .requestedIpAddress(req.getRequestedIpAddress())
-                        .requestReason(req.getRequestReason())
-                        .riskScoreImpact(req.getRiskScoreImpact())
-                        .createdAt(req.getCreatedAt())
-                        .expiresAt(req.getExpiresAt())
-                        .approvedAt(req.getApprovedAt())
-                        .completedAt(req.getCompletedAt())
-                        .existingDeviceName(
-                                req.getExistingCredentialToReplace() != null
-                                        ? req.getExistingCredentialToReplace().getDeviceName()
-                                        : null
-                        )
-                        .existingCredentialCreatedAt(
-                                req.getExistingCredentialToReplace() != null
-                                        ? req.getExistingCredentialToReplace().getCreatedAt()
-                                        : null
-                        )
-                        .adminComment(req.getAdminComment())
-                        .build())
+                .map(this::mapToAdminDTO)
                 .toList();
+    }
+
+    private AdminDeviceEnrollmentRequestResponseDTO mapToAdminDTO(DeviceEnrollmentRequest req) {
+        return AdminDeviceEnrollmentRequestResponseDTO.builder()
+                .id(req.getId())
+                .employeeName(req.getEmployee().getFullName())
+                .employeeId(req.getEmployee().getEmployeeId())
+                .status(req.getStatus().name())
+                .requestType(req.getRequestType().name())
+                .employeeDeviceId(req.getEmployeeDevice() != null ? req.getEmployeeDevice().getId() : null)
+                .deviceFingerprint(
+                        req.getEmployeeDevice() != null ? req.getEmployeeDevice().getDeviceFingerprint() : null
+                )
+                .requestedTrustType(
+                        req.getRequestedTrustType() != null ? req.getRequestedTrustType().name() : null
+                )
+                .approvedTrustType(
+                        req.getApprovedTrustType() != null ? req.getApprovedTrustType().name() : null
+                )
+                .requestedDeviceName(req.getRequestedDeviceName())
+                .requestedUserAgent(req.getRequestedUserAgent())
+                .requestedPlatform(req.getRequestedPlatform())
+                .requestedBrowser(req.getRequestedBrowser())
+                .requestedIpAddress(req.getRequestedIpAddress())
+                .requestReason(req.getRequestReason())
+                .riskScoreImpact(req.getRiskScoreImpact())
+                .createdAt(req.getCreatedAt())
+                .expiresAt(req.getExpiresAt())
+                .approvedAt(req.getApprovedAt())
+                .completedAt(req.getCompletedAt())
+                .existingDeviceName(
+                        req.getExistingCredentialToReplace() != null
+                                ? req.getExistingCredentialToReplace().getDeviceName()
+                                : null
+                )
+                .existingCredentialCreatedAt(
+                        req.getExistingCredentialToReplace() != null
+                                ? req.getExistingCredentialToReplace().getCreatedAt()
+                                : null
+                )
+                .adminComment(req.getAdminComment())
+                .build();
     }
 }

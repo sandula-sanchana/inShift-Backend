@@ -53,120 +53,49 @@ public class PasskeyServiceImpl implements PasskeyService {
             String userAgent,
             String ipAddress
     ) {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        validateRegisterStartDTO(dto);
 
-        Employee employee = employeeRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
-
-        if (dto == null || dto.getDeviceName() == null || dto.getDeviceName().isBlank()) {
-            throw new BadRequestException("Device name is required");
-        }
-
-        if (dto.getDeviceFingerprint() == null || dto.getDeviceFingerprint().isBlank()) {
-            throw new BadRequestException("Device fingerprint is required");
-        }
-
+        Employee employee = getCurrentEmployee();
         long activeCount = passkeyCredentialRepository.countByEmployeeAndActiveTrue(employee);
 
-        // First passkey registration
+        EmployeeDevice approvedDevice = requireApprovedMobileDevice(employee, dto.getDeviceFingerprint());
+
         if (activeCount == 0) {
-            EmployeeDevice approvedDevice = trustedDeviceService.requireApprovedDevice(
+            ensureRecentPasswordAuth(
                     employee,
-                    dto.getDeviceFingerprint()
+                    "Recent password authentication required to register first passkey"
             );
-
-            if (approvedDevice.getApprovedTrustType() != DeviceTrustType.MOBILE) {
-                throw new BadRequestException("Passkey registration is only allowed on approved mobile devices");
-            }
-
-            ensureRecentPasswordAuth(employee, "Recent password authentication required to register first passkey");
             return createRegistrationRequest(employee, purpose);
         }
 
-        // Same-device-like re-enrollment
-        boolean sameDeviceLike = deviceRecognitionService.isSameDeviceLike(employee, dto.getDeviceName(), userAgent);
-        if (sameDeviceLike) {
-            ensureRecentPasswordAuth(employee, "Recent password authentication required for re-enrollment");
-            return createRegistrationRequest(employee, purpose);
-        }
-
-        // New device must already be approved through /emp/device/enroll + admin flow
-        EmployeeDevice approvedDevice = trustedDeviceService.requireApprovedDevice(
+        boolean sameDeviceLike = deviceRecognitionService.isSameDeviceLike(
                 employee,
-                dto.getDeviceFingerprint()
+                dto.getDeviceName(),
+                userAgent
         );
 
-        if (approvedDevice.getApprovedTrustType() != DeviceTrustType.MOBILE) {
-            throw new BadRequestException("Passkey registration is only allowed on approved mobile devices");
+        if (sameDeviceLike) {
+            ensureRecentPasswordAuth(
+                    employee,
+                    "Recent password authentication required for re-enrollment"
+            );
+            return createRegistrationRequest(employee, purpose);
         }
 
-        ensureRecentPasswordAuth(employee,
-                "Recent password authentication required to register passkey on a new approved device");
+        ensureRecentPasswordAuth(
+                employee,
+                "Recent password authentication required to register passkey on a new approved device"
+        );
 
         return createRegistrationRequest(employee, purpose);
-    }
-
-    private void ensureRecentPasswordAuth(Employee employee, String message) {
-        if (!authSecurityService.hasRecentPasswordAuth(employee.getEmployeeId(), 5)) {
-            throw new BadRequestException(message);
-        }
-    }
-
-    private String createRegistrationRequest(Employee employee, WebAuthnChallengePurpose purpose) {
-        UserIdentity userIdentity = UserIdentity.builder()
-                .name(employee.getEmail())
-                .displayName(employee.getFullName())
-                .id(new ByteArray(
-                        ByteBuffer.allocate(Long.BYTES)
-                                .putLong(employee.getEmployeeId())
-                                .array()
-                ))
-                .build();
-
-        try {
-            PublicKeyCredentialCreationOptions request = relyingParty.startRegistration(
-                    StartRegistrationOptions.builder()
-                            .user(userIdentity)
-                            .build()
-            );
-
-            WebAuthnRegistrationRequest savedRequest = WebAuthnRegistrationRequest.builder()
-                    .employee(employee)
-                    .purpose(purpose)
-                    .requestJson(request.toJson())
-                    .used(false)
-                    .createdAt(LocalDateTime.now())
-                    .expiresAt(LocalDateTime.now().plusMinutes(5))
-                    .build();
-
-            registrationRequestRepository.save(savedRequest);
-
-            return request.toCredentialsCreateJson();
-
-        } catch (Exception e) {
-            throw new BadRequestException("Failed to create passkey registration options");
-        }
     }
 
     @Override
     @Transactional
     public void verifyAndSavePasskey(PasskeyRegisterVerifyDTO dto, String userAgent) {
-        if (dto == null || dto.getCredentialJson() == null || dto.getCredentialJson().isBlank()) {
-            throw new BadRequestException("Credential JSON is required");
-        }
+        validateRegisterVerifyDTO(dto);
 
-        if (dto.getDeviceName() == null || dto.getDeviceName().isBlank()) {
-            throw new BadRequestException("Device name is required");
-        }
-
-        if (dto.getDeviceFingerprint() == null || dto.getDeviceFingerprint().isBlank()) {
-            throw new BadRequestException("Device fingerprint is required");
-        }
-
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-
-        Employee employee = employeeRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
+        Employee employee = getCurrentEmployee();
 
         WebAuthnRegistrationRequest savedRequest = registrationRequestRepository
                 .findTopByEmployeeAndPurposeAndUsedFalseAndExpiresAtAfterOrderByCreatedAtDesc(
@@ -177,39 +106,31 @@ public class PasskeyServiceImpl implements PasskeyService {
                 .orElseThrow(() -> new BadRequestException("No valid registration request found"));
 
         long activeCount = passkeyCredentialRepository.countByEmployeeAndActiveTrue(employee);
-
         boolean sameDeviceReEnrollment = false;
 
-        if (activeCount >= 1) {
-            boolean sameDeviceLike = deviceRecognitionService.isSameDeviceLike(employee, dto.getDeviceName(), userAgent);
+        if (activeCount == 0) {
+            requireApprovedMobileDevice(employee, dto.getDeviceFingerprint());
+            ensureRecentPasswordAuth(employee, "Recent password authentication required");
+        } else {
+            boolean sameDeviceLike = deviceRecognitionService.isSameDeviceLike(
+                    employee,
+                    dto.getDeviceName(),
+                    userAgent
+            );
 
             if (sameDeviceLike) {
                 sameDeviceReEnrollment = true;
-                ensureRecentPasswordAuth(employee, "Recent password authentication required for re-enrollment");
-            } else {
-                EmployeeDevice approvedDevice = trustedDeviceService.requireApprovedDevice(
+                ensureRecentPasswordAuth(
                         employee,
-                        dto.getDeviceFingerprint()
+                        "Recent password authentication required for re-enrollment"
                 );
-
-                if (approvedDevice.getApprovedTrustType() != DeviceTrustType.MOBILE) {
-                    throw new BadRequestException("Passkey can only be registered on approved mobile devices");
-                }
-
-                ensureRecentPasswordAuth(employee,
-                        "Recent password authentication required for new approved mobile device registration");
+            } else {
+                requireApprovedMobileDevice(employee, dto.getDeviceFingerprint());
+                ensureRecentPasswordAuth(
+                        employee,
+                        "Recent password authentication required for new approved mobile device registration"
+                );
             }
-        } else {
-            EmployeeDevice approvedDevice = trustedDeviceService.requireApprovedDevice(
-                    employee,
-                    dto.getDeviceFingerprint()
-            );
-
-            if (approvedDevice.getApprovedTrustType() != DeviceTrustType.MOBILE) {
-                throw new BadRequestException("Passkey can only be registered on approved mobile devices");
-            }
-
-            ensureRecentPasswordAuth(employee, "Recent password authentication required");
         }
 
         try {
@@ -264,26 +185,9 @@ public class PasskeyServiceImpl implements PasskeyService {
         }
     }
 
-    private void revokeOtherActiveCredentials(Employee employee, String keepCredentialId, String reason) {
-        List<PasskeyCredential> activeCredentials = passkeyCredentialRepository.findByEmployeeAndActiveTrue(employee);
-
-        for (PasskeyCredential credential : activeCredentials) {
-            if (!credential.getCredentialId().equals(keepCredentialId)) {
-                credential.setActive(false);
-                credential.setStatus(PasskeyCredentialStatus.REVOKED);
-                credential.setRevokedAt(LocalDateTime.now());
-                credential.setRevokedReason(reason);
-                passkeyCredentialRepository.save(credential);
-            }
-        }
-    }
-
     @Override
     public String getPasskeyAssertionResponse(WebAuthnChallengePurpose purpose) {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-
-        Employee employee = employeeRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
+        Employee employee = getCurrentEmployee();
 
         try {
             AssertionRequest request = relyingParty.startAssertion(
@@ -317,10 +221,7 @@ public class PasskeyServiceImpl implements PasskeyService {
             throw new BadRequestException("Credential JSON is required");
         }
 
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-
-        Employee employee = employeeRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
+        Employee employee = getCurrentEmployee();
 
         WebAuthnAssertionRequest savedRequest = assertionRequestRepository
                 .findTopByEmployeeAndPurposeAndUsedFalseAndExpiresAtAfterOrderByCreatedAtDesc(
@@ -362,6 +263,115 @@ public class PasskeyServiceImpl implements PasskeyService {
             throw e;
         } catch (Exception e) {
             throw new BadRequestException("Passkey assertion verification failed");
+        }
+    }
+
+    private Employee getCurrentEmployee() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+
+        return employeeRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
+    }
+
+    private void validateRegisterStartDTO(PasskeyRegisterStartDTO dto) {
+        if (dto == null) {
+            throw new BadRequestException("Registration request is required");
+        }
+
+        if (dto.getDeviceName() == null || dto.getDeviceName().isBlank()) {
+            throw new BadRequestException("Device name is required");
+        }
+
+        if (dto.getDeviceFingerprint() == null || dto.getDeviceFingerprint().isBlank()) {
+            throw new BadRequestException("Device fingerprint is required");
+        }
+
+        if (dto.getRequestedTrustType() == null) {
+            throw new BadRequestException("Requested trust type is required");
+        }
+    }
+
+    private void validateRegisterVerifyDTO(PasskeyRegisterVerifyDTO dto) {
+        if (dto == null) {
+            throw new BadRequestException("Registration verification request is required");
+        }
+
+        if (dto.getCredentialJson() == null || dto.getCredentialJson().isBlank()) {
+            throw new BadRequestException("Credential JSON is required");
+        }
+
+        if (dto.getDeviceName() == null || dto.getDeviceName().isBlank()) {
+            throw new BadRequestException("Device name is required");
+        }
+
+        if (dto.getDeviceFingerprint() == null || dto.getDeviceFingerprint().isBlank()) {
+            throw new BadRequestException("Device fingerprint is required");
+        }
+    }
+
+    private EmployeeDevice requireApprovedMobileDevice(Employee employee, String deviceFingerprint) {
+        EmployeeDevice approvedDevice = trustedDeviceService.requireApprovedDevice(employee, deviceFingerprint);
+
+        if (approvedDevice.getApprovedTrustType() != DeviceTrustType.MOBILE) {
+            throw new BadRequestException("Passkey registration is only allowed on approved mobile devices");
+        }
+
+        return approvedDevice;
+    }
+
+    private void ensureRecentPasswordAuth(Employee employee, String message) {
+        if (!authSecurityService.hasRecentPasswordAuth(employee.getEmployeeId(), 5)) {
+            throw new BadRequestException(message);
+        }
+    }
+
+    private String createRegistrationRequest(Employee employee, WebAuthnChallengePurpose purpose) {
+        UserIdentity userIdentity = UserIdentity.builder()
+                .name(employee.getEmail())
+                .displayName(employee.getFullName())
+                .id(new ByteArray(
+                        ByteBuffer.allocate(Long.BYTES)
+                                .putLong(employee.getEmployeeId())
+                                .array()
+                ))
+                .build();
+
+        try {
+            PublicKeyCredentialCreationOptions request = relyingParty.startRegistration(
+                    StartRegistrationOptions.builder()
+                            .user(userIdentity)
+                            .build()
+            );
+
+            WebAuthnRegistrationRequest savedRequest = WebAuthnRegistrationRequest.builder()
+                    .employee(employee)
+                    .purpose(purpose)
+                    .requestJson(request.toJson())
+                    .used(false)
+                    .createdAt(LocalDateTime.now())
+                    .expiresAt(LocalDateTime.now().plusMinutes(5))
+                    .build();
+
+            registrationRequestRepository.save(savedRequest);
+
+            return request.toCredentialsCreateJson();
+
+        } catch (Exception e) {
+            throw new BadRequestException("Failed to create passkey registration options");
+        }
+    }
+
+    private void revokeOtherActiveCredentials(Employee employee, String keepCredentialId, String reason) {
+        List<PasskeyCredential> activeCredentials = passkeyCredentialRepository.findByEmployeeAndActiveTrue(employee);
+
+        for (PasskeyCredential credential : activeCredentials) {
+            if (!credential.getCredentialId().equals(keepCredentialId)) {
+                credential.setActive(false);
+                credential.setStatus(PasskeyCredentialStatus.REVOKED);
+                credential.setRevokedAt(LocalDateTime.now());
+                credential.setRevokedReason(reason);
+                passkeyCredentialRepository.save(credential);
+            }
         }
     }
 }

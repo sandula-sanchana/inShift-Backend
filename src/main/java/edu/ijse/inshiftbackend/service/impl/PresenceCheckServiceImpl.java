@@ -36,6 +36,10 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
     @Override
     @Transactional
     public PresenceCheckResponseDTO createPresenceCheck(PresenceCheckCreateDTO dto, String adminEmail) {
+        if (dto == null) {
+            throw new BadRequestException("Presence check request is required");
+        }
+
         Employee employee = employeeRepository.findById(dto.getEmployeeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
 
@@ -82,10 +86,11 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
 
         try {
             presenceNotificationService.sendPresenceCheckNotification(saved);
-            saved.setNotifiedAt(LocalDateTime.now());
-            saved = presenceCheckRepository.save(saved);
         } catch (Exception e) {
             System.err.println("Presence check created, but notification send failed: " + e.getMessage());
+        } finally {
+            saved.setNotifiedAt(LocalDateTime.now());
+            saved = presenceCheckRepository.save(saved);
         }
 
         return mapToDTO(saved);
@@ -117,6 +122,9 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
     @Override
     @Transactional
     public PresenceCheckResponseDTO respondToPresenceCheck(EmpPresenceCheckRespondDTO dto, String employeeEmail) {
+        if (dto == null) {
+            throw new BadRequestException("Presence response is required");
+        }
 
         Employee employee = employeeRepository.findByEmail(employeeEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
@@ -132,6 +140,10 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
             throw new BadRequestException("Presence check is not pending");
         }
 
+        if (presenceCheck.getRespondedAt() != null) {
+            throw new BadRequestException("Presence check has already been responded to");
+        }
+
         EmployeeDevice device = employeeDeviceRepository
                 .findByEmployeeAndDeviceFingerprintAndApprovalStatusAndActiveTrue(
                         employee,
@@ -140,10 +152,16 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
                 )
                 .orElseThrow(() -> new BadRequestException("This device is not approved for presence verification"));
 
+        validateResponseAgainstExpectedSource(presenceCheck, device);
         validateResponseByDeviceType(device, dto);
 
         LocalDateTime now = LocalDateTime.now();
-        int delaySeconds = (int) Duration.between(presenceCheck.getCreatedAt(), now).getSeconds();
+        LocalDateTime delayStartPoint =
+                presenceCheck.getNotifiedAt() != null
+                        ? presenceCheck.getNotifiedAt()
+                        : presenceCheck.getCreatedAt();
+
+        int delaySeconds = (int) Duration.between(delayStartPoint, now).getSeconds();
         boolean late = now.isAfter(presenceCheck.getDueAt());
 
         presenceCheck.setRespondedAt(now);
@@ -168,9 +186,38 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
         presenceCheck.setMissedResponse(false);
         presenceCheck.setStatus(late ? PresenceCheckStatus.LATE : PresenceCheckStatus.RESPONDED);
 
+        if (late && presenceCheck.getRiskLevel() == PresenceCheckRiskLevel.HIGH) {
+            presenceCheck.setEscalated(true);
+            presenceCheck.setEscalatedAt(now);
+            presenceCheck.setEscalationLevel(1);
+        }
+
         PresenceCheck saved = presenceCheckRepository.save(presenceCheck);
 
         return mapToDTO(saved);
+    }
+
+    private void validateResponseAgainstExpectedSource(PresenceCheck presenceCheck, EmployeeDevice device) {
+        if (presenceCheck.getSourceExpected() == null || device.getApprovedTrustType() == null) {
+            throw new BadRequestException("Presence source validation failed");
+        }
+
+        switch (presenceCheck.getSourceExpected()) {
+            case COMPANY_PC -> {
+                if (device.getApprovedTrustType() != DeviceTrustType.COMPANY_PC) {
+                    throw new BadRequestException("Presence must be confirmed from an approved company PC");
+                }
+            }
+            case MOBILE_BIOMETRIC -> {
+                if (device.getApprovedTrustType() != DeviceTrustType.MOBILE) {
+                    throw new BadRequestException("Presence must be confirmed from an approved mobile device");
+                }
+            }
+            case ANY -> {
+                // allow either approved mobile or approved company PC
+            }
+            default -> throw new BadRequestException("Unsupported expected source");
+        }
     }
 
     private void validateResponseByDeviceType(EmployeeDevice device, EmpPresenceCheckRespondDTO dto) {
@@ -180,6 +227,10 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
 
         if (dto.getResponseSource() == PresenceCheckResponseSource.MANUAL_REVIEW) {
             throw new BadRequestException("Manual review is not allowed for employee response");
+        }
+
+        if (device.getApprovedTrustType() == null) {
+            throw new BadRequestException("Approved device type is missing");
         }
 
         switch (device.getApprovedTrustType()) {

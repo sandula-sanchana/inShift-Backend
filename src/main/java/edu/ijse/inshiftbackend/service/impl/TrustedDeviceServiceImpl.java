@@ -4,6 +4,7 @@ import edu.ijse.inshiftbackend.entity.Employee;
 import edu.ijse.inshiftbackend.entity.EmployeeDevice;
 import edu.ijse.inshiftbackend.entity.enums.DeviceApprovalStatus;
 import edu.ijse.inshiftbackend.entity.enums.DeviceTrustType;
+import edu.ijse.inshiftbackend.exception.custom.BadRequestException;
 import edu.ijse.inshiftbackend.repository.EmployeeDeviceRepository;
 import edu.ijse.inshiftbackend.service.TrustedDeviceService;
 import lombok.RequiredArgsConstructor;
@@ -17,17 +18,30 @@ public class TrustedDeviceServiceImpl implements TrustedDeviceService {
 
     @Override
     public EmployeeDevice requireApprovedDevice(Employee employee, String deviceFingerprint) {
+        if (employee == null) {
+            throw new BadRequestException("Employee is required");
+        }
+
+        if (deviceFingerprint == null || deviceFingerprint.isBlank()) {
+            throw new BadRequestException("Device fingerprint is required");
+        }
+
         return employeeDeviceRepository
                 .findByEmployeeAndDeviceFingerprintAndApprovalStatusAndActiveTrue(
                         employee,
                         deviceFingerprint,
                         DeviceApprovalStatus.APPROVED
                 )
-                .orElseThrow(() -> new IllegalStateException("This device is not approved for presence verification"));
+                .orElseThrow(() ->
+                        new BadRequestException("This device is not approved for trusted operations"));
     }
 
     @Override
     public boolean hasApprovedCompanyPc(Employee employee) {
+        if (employee == null) {
+            return false;
+        }
+
         return employeeDeviceRepository.existsByEmployeeAndApprovalStatusAndApprovedTrustTypeAndActiveTrue(
                 employee,
                 DeviceApprovalStatus.APPROVED,
@@ -37,6 +51,10 @@ public class TrustedDeviceServiceImpl implements TrustedDeviceService {
 
     @Override
     public boolean hasApprovedMobile(Employee employee) {
+        if (employee == null) {
+            return false;
+        }
+
         return employeeDeviceRepository.existsByEmployeeAndApprovalStatusAndApprovedTrustTypeAndActiveTrue(
                 employee,
                 DeviceApprovalStatus.APPROVED,

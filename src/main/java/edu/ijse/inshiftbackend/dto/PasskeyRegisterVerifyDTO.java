@@ -16,5 +16,6 @@ public class PasskeyRegisterVerifyDTO {
     @NotBlank(message = "Device name is required")
     private String deviceName;
 
+    @NotBlank(message = "Device fingerprint is required")
     private String deviceFingerprint;
 }
