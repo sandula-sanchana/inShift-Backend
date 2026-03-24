@@ -30,7 +30,8 @@ public class PushNotificationServiceImpl implements PushNotificationService {
                 builder.putAllData(data);
             }
 
-            FirebaseMessaging.getInstance().send(builder.build());
+            String id = FirebaseMessaging.getInstance().send(builder.build());
+            System.out.println("FCM message sent id=" + id);
         } catch (Exception e) {
             throw new RuntimeException("Failed to send push notification", e);
         }

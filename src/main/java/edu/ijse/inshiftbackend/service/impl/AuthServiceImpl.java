@@ -47,7 +47,7 @@ public class AuthServiceImpl implements AuthService {
         employee.setLastPasswordAuthenticatedAt(LocalDateTime.now());
         employeeRepository.save(employee);
 
-        //System.out.println(accessToken);
+        System.out.println(accessToken);
 
         return AuthResponseDTO.builder()
                 .access_token(accessToken)
