@@ -15,6 +15,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
+import java.util.Random;
 
 
 @Configuration
@@ -51,5 +52,10 @@ public class WebConfig {
                         .password(employee.getPasswordHash())
                         .authorities(List.of(new SimpleGrantedAuthority("ROLE_"+employee.getRole().name()))).build()
         ).orElseThrow(()->new UsernameNotFoundException("User not found"));
+    }
+
+    @Bean
+    public Random random() {
+        return new Random();
     }
 }

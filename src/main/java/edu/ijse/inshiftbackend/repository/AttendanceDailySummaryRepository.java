@@ -14,9 +14,9 @@ public interface AttendanceDailySummaryRepository extends JpaRepository<Attendan
 
     Optional<AttendanceDailySummary> findByEmployeeEmployeeIdAndSummaryDate(Long employeeId, LocalDate summaryDate);
 
-    List<AttendanceDailySummary> findAllBySummaryDate(LocalDate summaryDate);
-
-    List<AttendanceDailySummary> findAllByEmployeeEmployeeIdOrderBySummaryDateDesc(Long employeeId);
+//    List<AttendanceDailySummary> findAllBySummaryDate(LocalDate summaryDate);
+//
+//    List<AttendanceDailySummary> findAllByEmployeeEmployeeIdOrderBySummaryDateDesc(Long employeeId);
 
     long countBySummaryDateAndPresentTrue(LocalDate summaryDate);
 

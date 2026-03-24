@@ -35,7 +35,7 @@ public class PresenceCheckPlanningServiceImpl implements PresenceCheckPlanningSe
     private final PresenceCheckPlanRepository presenceCheckPlanRepository;
     private final TrustedDeviceService trustedDeviceService;
 
-    private final Random random = new Random();
+    private final Random random;
 
     @Override
     @Transactional
