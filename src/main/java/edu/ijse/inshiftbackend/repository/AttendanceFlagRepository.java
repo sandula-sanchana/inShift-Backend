@@ -34,4 +34,10 @@ public interface AttendanceFlagRepository extends JpaRepository<AttendanceFlag, 
     );
 
     List<AttendanceFlag> findByEmployeeEmployeeIdAndAttendanceDateOrderByDetectedAtDesc(Long employeeId, LocalDate attendanceDate);
+
+    List<AttendanceFlag> findByEmployeeEmployeeIdAndAttendanceDateBetweenOrderByDetectedAtDesc(
+            Long employeeId,
+            LocalDate startDate,
+            LocalDate endDate
+    );
 }
