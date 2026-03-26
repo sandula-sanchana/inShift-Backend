@@ -12,7 +12,7 @@ import java.util.List;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/admin/intelligence")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin
 public class AdminAttendanceIntelligenceAdminController {
 
     private final AttendanceIntelligenceService attendanceIntelligenceService;

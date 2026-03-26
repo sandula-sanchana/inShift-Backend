@@ -1,5 +1,5 @@
-package edu.ijse.inshiftbackend.entity.enums;
+    package edu.ijse.inshiftbackend.entity.enums;
 
-public enum AttendanceSource {
-    DEVICE, MOBILE, WEB
-}
+    public enum AttendanceSource {
+        DEVICE, MOBILE, WEB
+    }
