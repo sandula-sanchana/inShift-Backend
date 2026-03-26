@@ -28,4 +28,7 @@ public interface DeviceEnrollmentRequestRepository extends JpaRepository<DeviceE
             EmployeeDevice employeeDevice,
             List<DeviceEnrollmentRequestStatus> statuses
     );
+
+    Optional<DeviceEnrollmentRequest> findTopByEmployeeDeviceOrderByCreatedAtDesc(EmployeeDevice employeeDevice);
+
 }

@@ -25,11 +25,13 @@ public interface EmployeeDeviceRepository extends JpaRepository<EmployeeDevice, 
             DeviceTrustType approvedTrustType
     );
 
-    List<EmployeeDevice> findAllByEmployeeAndApprovalStatusAndApprovedTrustTypeAndActiveTrue(
-            Employee employee,
-            DeviceApprovalStatus approvalStatus,
-            DeviceTrustType approvedTrustType
-    );
+//    List<EmployeeDevice> findAllByEmployeeAndApprovalStatusAndApprovedTrustTypeAndActiveTrue(
+//            Employee employee,
+//            DeviceApprovalStatus approvalStatus,
+//            DeviceTrustType approvedTrustType
+//    );
+
+    List<EmployeeDevice> findByEmployeeOrderByCreatedAtDesc(Employee employee);
 
     List<EmployeeDevice> findAllByApprovalStatusAndActiveTrue(DeviceApprovalStatus approvalStatus);
 }

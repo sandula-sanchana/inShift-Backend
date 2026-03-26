@@ -64,6 +64,7 @@ public class EmployeeDeviceServiceImpl implements EmployeeDeviceService {
 
         EmployeeDevice saved = employeeDeviceRepository.save(existingDevice);
 
+        // If the device is pending, make sure exactly one pending request exists.
         if (saved.getApprovalStatus() == DeviceApprovalStatus.PENDING) {
             ensurePendingRequestExists(employee, saved, dto, now);
         }
@@ -84,8 +85,10 @@ public class EmployeeDeviceServiceImpl implements EmployeeDeviceService {
             LocalDateTime now
     ) {
         boolean hasApprovedMobile = hasApprovedDevice(employee, DeviceTrustType.MOBILE);
-        boolean hasApprovedCompanyPc = hasApprovedDevice(employee, DeviceTrustType.COMPANY_PC);
 
+        //MY BUSINESS RULE:
+        // Only the first MOBILE device can be auto-approved.
+        // COMPANY_PC must always go through admin approval.
         boolean shouldAutoApproveFirstMobile =
                 dto.getRequestedTrustType() == DeviceTrustType.MOBILE && !hasApprovedMobile;
 
@@ -131,20 +134,20 @@ public class EmployeeDeviceServiceImpl implements EmployeeDeviceService {
     ) {
         expireOldRequestsIfNeeded(employee, now);
 
-        Optional<DeviceEnrollmentRequest> sameDeviceActiveRequest =
+
+        // Only check for an existing PENDING request for the same device.
+        Optional<DeviceEnrollmentRequest> sameDevicePendingRequest =
                 deviceEnrollmentRequestRepository
                         .findTopByEmployeeDeviceAndStatusInOrderByCreatedAtDesc(
                                 device,
-                                List.of(
-                                        DeviceEnrollmentRequestStatus.PENDING,
-                                        DeviceEnrollmentRequestStatus.APPROVED
-                                )
+                                List.of(DeviceEnrollmentRequestStatus.PENDING)
                         );
 
-        if (sameDeviceActiveRequest.isPresent()) {
+        if (sameDevicePendingRequest.isPresent()) {
             return;
         }
 
+        // Allow only one employee-level pending request at a time.
         boolean employeeAlreadyHasPendingRequest =
                 deviceEnrollmentRequestRepository.existsByEmployeeAndStatusIn(
                         employee,
