@@ -19,4 +19,6 @@ public interface PresenceCheckService {
     List<PresenceCheckResponseDTO> getPresenceCheckHistory();
 
     List<PresenceCheckResponseDTO> getMyPresenceCheckHistory(String employeeEmail);
+
+    PresenceCheckResponseDTO getPresenceCheckByIdForEmployee(Long presenceCheckId, String employeeEmail);
 }

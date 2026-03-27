@@ -278,6 +278,25 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
                 .toList();
     }
 
+    @Override
+    public PresenceCheckResponseDTO getPresenceCheckByIdForEmployee(Long presenceCheckId, String employeeEmail) {
+        if (presenceCheckId == null) {
+            throw new BadRequestException("Presence check id is required");
+        }
+
+        Employee employee = employeeRepository.findByEmail(employeeEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
+
+        PresenceCheck presenceCheck = presenceCheckRepository.findById(presenceCheckId)
+                .orElseThrow(() -> new ResourceNotFoundException("Presence check not found"));
+
+        if (!presenceCheck.getEmployee().getEmployeeId().equals(employee.getEmployeeId())) {
+            throw new BadRequestException("You cannot access another employee's presence check");
+        }
+
+        return mapToDTO(presenceCheck);
+    }
+
     private PresenceCheckResponseDTO mapToDTO(PresenceCheck pc) {
         return PresenceCheckResponseDTO.builder()
                 .id(pc.getId())

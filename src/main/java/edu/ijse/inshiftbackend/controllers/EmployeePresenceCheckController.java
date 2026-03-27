@@ -48,4 +48,16 @@ public class EmployeePresenceCheckController {
                 presenceCheckService.getMyPresenceCheckHistory(auth.getName())
         );
     }
+
+    @GetMapping("/{presenceCheckId}")
+    public APIResponse<PresenceCheckResponseDTO> getById(
+            @PathVariable Long presenceCheckId,
+            Authentication auth
+    ) {
+        return new APIResponse<>(
+                200,
+                "Presence check fetched successfully",
+                presenceCheckService.getPresenceCheckByIdForEmployee(presenceCheckId, auth.getName())
+        );
+    }
 }
