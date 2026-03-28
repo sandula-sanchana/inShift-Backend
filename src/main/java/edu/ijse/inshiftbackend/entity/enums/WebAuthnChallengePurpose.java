@@ -2,5 +2,6 @@ package edu.ijse.inshiftbackend.entity.enums;
 
 public enum WebAuthnChallengePurpose {
     REGISTER,
-    AUTHENTICATE
+    AUTHENTICATE,
+    PRESENCE_CHECK
 }

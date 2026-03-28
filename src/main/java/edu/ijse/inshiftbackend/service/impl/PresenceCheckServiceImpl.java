@@ -6,17 +6,18 @@ import edu.ijse.inshiftbackend.dto.response.PresenceCheckResponseDTO;
 import edu.ijse.inshiftbackend.entity.Employee;
 import edu.ijse.inshiftbackend.entity.EmployeeDevice;
 import edu.ijse.inshiftbackend.entity.PresenceCheck;
+import edu.ijse.inshiftbackend.entity.PresenceCheckBiometricProof;
 import edu.ijse.inshiftbackend.entity.enums.DeviceApprovalStatus;
 import edu.ijse.inshiftbackend.entity.enums.DeviceTrustType;
 import edu.ijse.inshiftbackend.entity.enums.PresenceCheckResponseSource;
 import edu.ijse.inshiftbackend.entity.enums.PresenceCheckRiskLevel;
 import edu.ijse.inshiftbackend.entity.enums.PresenceCheckSourceExpected;
 import edu.ijse.inshiftbackend.entity.enums.PresenceCheckStatus;
-import edu.ijse.inshiftbackend.entity.enums.PresenceCheckTriggerReason;
 import edu.ijse.inshiftbackend.exception.custom.BadRequestException;
 import edu.ijse.inshiftbackend.exception.custom.ResourceNotFoundException;
 import edu.ijse.inshiftbackend.repository.EmployeeDeviceRepository;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
+import edu.ijse.inshiftbackend.repository.PresenceCheckBiometricProofRepository;
 import edu.ijse.inshiftbackend.repository.PresenceCheckRepository;
 import edu.ijse.inshiftbackend.service.PresenceCheckService;
 import edu.ijse.inshiftbackend.service.PresenceCheckTriggerService;
@@ -40,6 +41,7 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
     private final PresenceCheckRepository presenceCheckRepository;
     private final EmployeeRepository employeeRepository;
     private final EmployeeDeviceRepository employeeDeviceRepository;
+    private final PresenceCheckBiometricProofRepository presenceCheckBiometricProofRepository;
     private final PresenceCheckTriggerService presenceCheckTriggerService;
 
     @Override
@@ -128,6 +130,10 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
 
         validateResponseAgainstExpectedSource(presenceCheck, device);
         validateResponseByDeviceType(device, dto);
+
+        if (dto.getResponseSource() == PresenceCheckResponseSource.MOBILE_GPS) {
+            validateBiometricProofForMobile(presenceCheck, employee, dto);
+        }
 
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime delayStartPoint =
@@ -221,6 +227,39 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
             }
             default -> throw new BadRequestException("Unsupported device type");
         }
+    }
+
+    private void validateBiometricProofForMobile(
+            PresenceCheck presenceCheck,
+            Employee employee,
+            EmpPresenceCheckRespondDTO dto
+    ) {
+        if (dto.getBiometricProofToken() == null || dto.getBiometricProofToken().isBlank()) {
+            throw new BadRequestException("Biometric proof is required for mobile presence confirmation");
+        }
+
+        PresenceCheckBiometricProof proof = presenceCheckBiometricProofRepository
+                .findByProofTokenAndUsedFalseAndExpiresAtAfter(
+                        dto.getBiometricProofToken(),
+                        LocalDateTime.now()
+                )
+                .orElseThrow(() -> new BadRequestException("Valid biometric proof is required"));
+
+        if (!proof.getEmployee().getEmployeeId().equals(employee.getEmployeeId())) {
+            throw new BadRequestException("Biometric proof does not belong to this employee");
+        }
+
+        if (!proof.getPresenceCheck().getId().equals(presenceCheck.getId())) {
+            throw new BadRequestException("Biometric proof does not belong to this presence check");
+        }
+
+        if (!proof.getDeviceFingerprint().equals(dto.getDeviceFingerprint())) {
+            throw new BadRequestException("Biometric proof does not match this device");
+        }
+
+        proof.setUsed(true);
+        proof.setUsedAt(LocalDateTime.now());
+        presenceCheckBiometricProofRepository.save(proof);
     }
 
     @Override

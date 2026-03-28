@@ -58,7 +58,7 @@ public class PasskeyServiceImpl implements PasskeyService {
         Employee employee = getCurrentEmployee();
         long activeCount = passkeyCredentialRepository.countByEmployeeAndActiveTrue(employee);
 
-        EmployeeDevice approvedDevice = requireApprovedMobileDevice(employee, dto.getDeviceFingerprint());
+        requireApprovedMobileDevice(employee, dto.getDeviceFingerprint());
 
         if (activeCount == 0) {
             ensureRecentPasswordAuth(
@@ -193,6 +193,7 @@ public class PasskeyServiceImpl implements PasskeyService {
             AssertionRequest request = relyingParty.startAssertion(
                     StartAssertionOptions.builder()
                             .username(employee.getEmail())
+                            .userVerification(UserVerificationRequirement.REQUIRED)
                             .build()
             );
 
@@ -217,8 +218,21 @@ public class PasskeyServiceImpl implements PasskeyService {
     @Override
     @Transactional
     public void verifyPasskeyAssertion(PasskeyAssertionVerifyDTO dto) {
+        verifyPasskeyAssertion(dto, WebAuthnChallengePurpose.AUTHENTICATE);
+    }
+
+    @Override
+    @Transactional
+    public void verifyPasskeyAssertion(
+            PasskeyAssertionVerifyDTO dto,
+            WebAuthnChallengePurpose purpose
+    ) {
         if (dto == null || dto.getCredentialJson() == null || dto.getCredentialJson().isBlank()) {
             throw new BadRequestException("Credential JSON is required");
+        }
+
+        if (purpose == null) {
+            throw new BadRequestException("Assertion purpose is required");
         }
 
         Employee employee = getCurrentEmployee();
@@ -226,7 +240,7 @@ public class PasskeyServiceImpl implements PasskeyService {
         WebAuthnAssertionRequest savedRequest = assertionRequestRepository
                 .findTopByEmployeeAndPurposeAndUsedFalseAndExpiresAtAfterOrderByCreatedAtDesc(
                         employee,
-                        WebAuthnChallengePurpose.AUTHENTICATE,
+                        purpose,
                         LocalDateTime.now()
                 )
                 .orElseThrow(() -> new BadRequestException("No valid assertion request found"));

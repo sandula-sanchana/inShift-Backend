@@ -21,6 +21,8 @@ public class EmpPresenceCheckRespondDTO {
     @NotNull(message = "Response source is required")
     private PresenceCheckResponseSource responseSource;
 
+    private String biometricProofToken;
+
     private Double latitude;
     private Double longitude;
     private Double accuracyMeters;
