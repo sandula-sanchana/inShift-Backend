@@ -15,7 +15,8 @@ public class PresenceDailyPlanningSchedulerServiceImpl implements PresenceDailyP
     private final PresenceCheckPlanningService presenceCheckPlanningService;
 
     @Override
-    @Scheduled(cron = "0 0 8 * * *")
+//    @Scheduled(cron = "0 0 8 * * *")
+    @Scheduled(cron = "0 * * * * *")
     public void generateTodayPlans() {
         LocalDate today = LocalDate.now();
 
