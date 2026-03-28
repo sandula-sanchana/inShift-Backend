@@ -1,19 +1,25 @@
 package edu.ijse.inshiftbackend.service.impl;
 
-import edu.ijse.inshiftbackend.dto.PresenceCheckCreateDTO;
 import edu.ijse.inshiftbackend.dto.EmpPresenceCheckRespondDTO;
+import edu.ijse.inshiftbackend.dto.PresenceCheckCreateDTO;
 import edu.ijse.inshiftbackend.dto.response.PresenceCheckResponseDTO;
 import edu.ijse.inshiftbackend.entity.Employee;
 import edu.ijse.inshiftbackend.entity.EmployeeDevice;
 import edu.ijse.inshiftbackend.entity.PresenceCheck;
-import edu.ijse.inshiftbackend.entity.enums.*;
+import edu.ijse.inshiftbackend.entity.enums.DeviceApprovalStatus;
+import edu.ijse.inshiftbackend.entity.enums.DeviceTrustType;
+import edu.ijse.inshiftbackend.entity.enums.PresenceCheckResponseSource;
+import edu.ijse.inshiftbackend.entity.enums.PresenceCheckRiskLevel;
+import edu.ijse.inshiftbackend.entity.enums.PresenceCheckSourceExpected;
+import edu.ijse.inshiftbackend.entity.enums.PresenceCheckStatus;
+import edu.ijse.inshiftbackend.entity.enums.PresenceCheckTriggerReason;
 import edu.ijse.inshiftbackend.exception.custom.BadRequestException;
 import edu.ijse.inshiftbackend.exception.custom.ResourceNotFoundException;
 import edu.ijse.inshiftbackend.repository.EmployeeDeviceRepository;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
 import edu.ijse.inshiftbackend.repository.PresenceCheckRepository;
 import edu.ijse.inshiftbackend.service.PresenceCheckService;
-import edu.ijse.inshiftbackend.service.PresenceNotificationService;
+import edu.ijse.inshiftbackend.service.PresenceCheckTriggerService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,17 +27,20 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class PresenceCheckServiceImpl implements PresenceCheckService {
 
+    private static final Set<PresenceCheckStatus> ACTIVE_CHECK_STATUSES = Set.of(
+            PresenceCheckStatus.PENDING
+    );
+
     private final PresenceCheckRepository presenceCheckRepository;
     private final EmployeeRepository employeeRepository;
-    private final PresenceNotificationService presenceNotificationService;
     private final EmployeeDeviceRepository employeeDeviceRepository;
-
-    private static final int DEFAULT_DUE_SECONDS = 120;
+    private final PresenceCheckTriggerService presenceCheckTriggerService;
 
     @Override
     @Transactional
@@ -43,65 +52,30 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
         Employee employee = employeeRepository.findById(dto.getEmployeeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
 
-        presenceCheckRepository.findFirstByEmployeeEmployeeIdAndStatusOrderByCreatedAtDesc(
-                employee.getEmployeeId(),
-                PresenceCheckStatus.PENDING
-        ).ifPresent(existing -> {
-            throw new BadRequestException("Employee already has a pending presence check");
-        });
-
-        LocalDateTime now = LocalDateTime.now();
-        int dueInSeconds = dto.getDueInSeconds() != null && dto.getDueInSeconds() > 0
-                ? dto.getDueInSeconds()
-                : DEFAULT_DUE_SECONDS;
-
-        PresenceCheck presenceCheck = PresenceCheck.builder()
-                .employee(employee)
-                .triggerReason(dto.getTriggerReason())
-                .riskLevel(resolveManualRiskLevel(dto.getTriggerReason()))
-                .status(PresenceCheckStatus.PENDING)
-                .sourceExpected(dto.getSourceExpected())
-                .triggerDescription(dto.getTriggerDescription())
-                .adminNote(dto.getAdminNote())
-                .createdAt(now)
-                .dueAt(now.plusSeconds(dueInSeconds))
-                .notifiedAt(null)
-                .respondedAt(null)
-                .responseSource(null)
-                .responseLatitude(null)
-                .responseLongitude(null)
-                .responseAccuracyMeters(null)
-                .responseLocationText(null)
-                .responseNote(null)
-                .responseDelaySeconds(null)
-                .lateResponse(false)
-                .missedResponse(false)
-                .escalated(false)
-                .escalatedAt(null)
-                .escalationLevel(0)
-                .respondingDevice(null)
-                .build();
-
-        PresenceCheck saved = presenceCheckRepository.save(presenceCheck);
-
-        try {
-            presenceNotificationService.sendPresenceCheckNotification(saved);
-        } catch (Exception e) {
-            System.err.println("Presence check created, but notification send failed: " + e.getMessage());
-        } finally {
-            saved.setNotifiedAt(LocalDateTime.now());
-            saved = presenceCheckRepository.save(saved);
+        if (dto.getTriggerReason() == null) {
+            throw new BadRequestException("Trigger reason is required");
         }
 
-        return mapToDTO(saved);
-    }
+        PresenceCheck created = presenceCheckTriggerService.triggerPresenceCheck(
+                employee,
+                dto.getTriggerReason(),
+                dto.getTriggerDescription()
+        );
 
-    private PresenceCheckRiskLevel resolveManualRiskLevel(PresenceCheckTriggerReason reason) {
-        return switch (reason) {
-            case RANDOM -> PresenceCheckRiskLevel.LOW;
-            case LOCATION_ANOMALY, ADMIN_MANUAL, RULE_ENGINE -> PresenceCheckRiskLevel.MEDIUM;
-            case RISK_PATTERN, DEVICE_ANOMALY -> PresenceCheckRiskLevel.HIGH;
-        };
+        if (created == null) {
+            throw new BadRequestException("Unable to create presence check");
+        }
+
+        if (dto.getAdminNote() != null && !dto.getAdminNote().isBlank()) {
+            created.setAdminNote(dto.getAdminNote());
+        }
+
+        if (dto.getSourceExpected() != null && dto.getSourceExpected() != PresenceCheckSourceExpected.ANY) {
+            created.setSourceExpected(dto.getSourceExpected());
+        }
+
+        created = presenceCheckRepository.save(created);
+        return mapToDTO(created);
     }
 
     @Override
@@ -110,9 +84,9 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
 
         PresenceCheck presenceCheck = presenceCheckRepository
-                .findFirstByEmployeeEmployeeIdAndStatusOrderByCreatedAtDesc(
+                .findFirstByEmployeeEmployeeIdAndStatusInOrderByCreatedAtDesc(
                         employee.getEmployeeId(),
-                        PresenceCheckStatus.PENDING
+                        ACTIVE_CHECK_STATUSES
                 )
                 .orElseThrow(() -> new ResourceNotFoundException("No pending presence check found"));
 
@@ -162,7 +136,7 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
                         : presenceCheck.getCreatedAt();
 
         int delaySeconds = (int) Duration.between(delayStartPoint, now).getSeconds();
-        boolean late = now.isAfter(presenceCheck.getDueAt());
+        boolean late = presenceCheck.getDueAt() != null && now.isAfter(presenceCheck.getDueAt());
 
         presenceCheck.setRespondedAt(now);
         presenceCheck.setRespondingDevice(device);
@@ -186,14 +160,12 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
         presenceCheck.setMissedResponse(false);
         presenceCheck.setStatus(late ? PresenceCheckStatus.LATE : PresenceCheckStatus.RESPONDED);
 
-        if (late && presenceCheck.getRiskLevel() == PresenceCheckRiskLevel.HIGH) {
-            presenceCheck.setEscalated(true);
-            presenceCheck.setEscalatedAt(now);
-            presenceCheck.setEscalationLevel(1);
-        }
+        boolean shouldEscalate = late && presenceCheck.getRiskLevel() == PresenceCheckRiskLevel.HIGH;
+        presenceCheck.setEscalated(shouldEscalate);
+        presenceCheck.setEscalatedAt(shouldEscalate ? now : null);
+        presenceCheck.setEscalationLevel(shouldEscalate ? 1 : 0);
 
         PresenceCheck saved = presenceCheckRepository.save(presenceCheck);
-
         return mapToDTO(saved);
     }
 
@@ -214,7 +186,7 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
                 }
             }
             case ANY -> {
-                // allow either approved mobile or approved company PC
+                // either approved mobile or approved company PC is allowed
             }
             default -> throw new BadRequestException("Unsupported expected source");
         }
@@ -253,7 +225,7 @@ public class PresenceCheckServiceImpl implements PresenceCheckService {
 
     @Override
     public List<PresenceCheckResponseDTO> getActivePresenceChecks() {
-        return presenceCheckRepository.findByStatusOrderByCreatedAtDesc(PresenceCheckStatus.PENDING)
+        return presenceCheckRepository.findByStatusInOrderByCreatedAtDesc(ACTIVE_CHECK_STATUSES)
                 .stream()
                 .map(this::mapToDTO)
                 .toList();

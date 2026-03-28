@@ -28,6 +28,18 @@ public class EmployeePresenceCheckController {
         );
     }
 
+    @GetMapping("/{presenceCheckId}")
+    public APIResponse<PresenceCheckResponseDTO> getById(
+            @PathVariable Long presenceCheckId,
+            Authentication auth
+    ) {
+        return new APIResponse<>(
+                200,
+                "Presence check fetched successfully",
+                presenceCheckService.getPresenceCheckByIdForEmployee(presenceCheckId, auth.getName())
+        );
+    }
+
     @PostMapping("/respond")
     public APIResponse<PresenceCheckResponseDTO> respond(
             @RequestBody @Valid EmpPresenceCheckRespondDTO dto,
@@ -46,18 +58,6 @@ public class EmployeePresenceCheckController {
                 200,
                 "My presence check history fetched successfully",
                 presenceCheckService.getMyPresenceCheckHistory(auth.getName())
-        );
-    }
-
-    @GetMapping("/{presenceCheckId}")
-    public APIResponse<PresenceCheckResponseDTO> getById(
-            @PathVariable Long presenceCheckId,
-            Authentication auth
-    ) {
-        return new APIResponse<>(
-                200,
-                "Presence check fetched successfully",
-                presenceCheckService.getPresenceCheckByIdForEmployee(presenceCheckId, auth.getName())
         );
     }
 }
