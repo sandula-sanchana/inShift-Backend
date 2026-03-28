@@ -6,23 +6,28 @@ import edu.ijse.inshiftbackend.dto.EmployeeOfferOvertimeSwapDTO;
 import edu.ijse.inshiftbackend.dto.response.OvertimeAssignmentResponseDTO;
 import edu.ijse.inshiftbackend.dto.response.OvertimeSwapResponseDTO;
 import edu.ijse.inshiftbackend.entity.Employee;
+import edu.ijse.inshiftbackend.entity.EmployeeDeviceToken;
 import edu.ijse.inshiftbackend.entity.OvertimeAssignment;
 import edu.ijse.inshiftbackend.entity.OvertimeSwapRequest;
 import edu.ijse.inshiftbackend.entity.enums.OvertimeStatus;
 import edu.ijse.inshiftbackend.entity.enums.OvertimeSwapStatus;
 import edu.ijse.inshiftbackend.exception.custom.BadRequestException;
 import edu.ijse.inshiftbackend.exception.custom.ResourceNotFoundException;
+import edu.ijse.inshiftbackend.repository.EmployeeDeviceFCMTokenRepository;
 import edu.ijse.inshiftbackend.repository.EmployeeRepository;
 import edu.ijse.inshiftbackend.repository.OvertimeAssignmentRepository;
 import edu.ijse.inshiftbackend.repository.OvertimeSwapRequestRepository;
 import edu.ijse.inshiftbackend.service.OvertimeService;
+import edu.ijse.inshiftbackend.service.PushNotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -31,6 +36,8 @@ public class OvertimeServiceImpl implements OvertimeService {
     private final EmployeeRepository employeeRepository;
     private final OvertimeAssignmentRepository overtimeAssignmentRepository;
     private final OvertimeSwapRequestRepository overtimeSwapRequestRepository;
+    private final EmployeeDeviceFCMTokenRepository employeeDeviceFCMTokenRepository;
+    private final PushNotificationService pushNotificationService;
 
     @Override
     @Transactional
@@ -64,7 +71,49 @@ public class OvertimeServiceImpl implements OvertimeService {
                 .assignedAt(LocalDateTime.now())
                 .build();
 
-        return mapToAssignmentDTO(overtimeAssignmentRepository.save(assignment));
+        OvertimeAssignment saved = overtimeAssignmentRepository.save(assignment);
+
+        //Notify employee
+        Map<String, String> data = new HashMap<>();
+        data.put("type", "OT_ASSIGNED");
+        data.put("overtimeId", String.valueOf(saved.getId()));
+        data.put("url", "/emp/overtime");
+
+        notifyEmployee(
+                employee,
+                "Overtime Assigned",
+                "You have been assigned overtime on " + saved.getOtDate(),
+                data
+        );
+
+        return mapToAssignmentDTO(saved);
+    }
+
+    private void notifyEmployee(Employee employee, String title, String body, Map<String, String> data) {
+        List<EmployeeDeviceToken> tokens =
+                employeeDeviceFCMTokenRepository.findAllByEmployeeAndActiveTrue(employee);
+
+        if (tokens == null || tokens.isEmpty()) return;
+
+        for (EmployeeDeviceToken token : tokens) {
+            if (token.getFcmToken() == null || token.getFcmToken().isBlank()) continue;
+
+            try {
+                pushNotificationService.sendToToken(
+                        token.getFcmToken(),
+                        title,
+                        body,
+                        data
+                );
+
+                token.setLastUsedAt(LocalDateTime.now());
+                employeeDeviceFCMTokenRepository.save(token);
+
+            } catch (Exception e) {
+                System.err.println("Failed OT notification to token id "
+                        + token.getId() + ": " + e.getMessage());
+            }
+        }
     }
 
     @Override
@@ -97,10 +146,26 @@ public class OvertimeServiceImpl implements OvertimeService {
             throw new BadRequestException("Only assigned OT can be accepted");
         }
 
+
         assignment.setStatus(OvertimeStatus.ACCEPTED);
         assignment.setEmployeeResponseNote(null);
 
-        return mapToAssignmentDTO(overtimeAssignmentRepository.save(assignment));
+        OvertimeAssignment saved = overtimeAssignmentRepository.save(assignment);
+
+        //Notify admin
+        Map<String, String> data = new HashMap<>();
+        data.put("type", "OT_ACCEPTED");
+        data.put("overtimeId", String.valueOf(saved.getId()));
+        data.put("url", "/admin/overtime");
+
+        notifyEmployee(
+                saved.getAssignedBy(),
+                "Overtime Accepted",
+                saved.getEmployee().getFullName() + " accepted the overtime",
+                data
+        );
+
+        return mapToAssignmentDTO(saved);
     }
 
     @Override
@@ -115,7 +180,22 @@ public class OvertimeServiceImpl implements OvertimeService {
         assignment.setStatus(OvertimeStatus.DECLINED);
         assignment.setEmployeeResponseNote(dto.getNote());
 
-        return mapToAssignmentDTO(overtimeAssignmentRepository.save(assignment));
+        OvertimeAssignment saved = overtimeAssignmentRepository.save(assignment);
+
+       //Notify admin
+        Map<String, String> data = new HashMap<>();
+        data.put("type", "OT_DECLINED");
+        data.put("overtimeId", String.valueOf(saved.getId()));
+        data.put("url", "/admin/overtime");
+
+        notifyEmployee(
+                saved.getAssignedBy(),
+                "Overtime Declined",
+                saved.getEmployee().getFullName() + " declined OT",
+                data
+        );
+
+        return mapToAssignmentDTO(saved);
     }
 
     @Override
@@ -156,7 +236,22 @@ public class OvertimeServiceImpl implements OvertimeService {
         assignment.setStatus(OvertimeStatus.SWAP_PENDING);
         overtimeAssignmentRepository.save(assignment);
 
-        return mapToSwapDTO(overtimeSwapRequestRepository.save(swapRequest));
+        OvertimeSwapRequest savedSwap = overtimeSwapRequestRepository.save(swapRequest);
+
+        //Notify target employee
+        Map<String, String> data = new HashMap<>();
+        data.put("type", "OT_SWAP_REQUEST");
+        data.put("swapRequestId", String.valueOf(savedSwap.getId()));
+        data.put("url", "/emp/overtime/swaps");
+
+        notifyEmployee(
+                toEmployee,
+                "Overtime Swap Request",
+                fromEmployee.getFullName() + " wants to swap OT with you",
+                data
+        );
+
+        return mapToSwapDTO(savedSwap);
     }
 
     @Override
@@ -183,7 +278,7 @@ public class OvertimeServiceImpl implements OvertimeService {
 
         OvertimeAssignment assignment = swapRequest.getOvertimeAssignment();
         assignment.setEmployee(swapRequest.getToEmployee());
-        assignment.setStatus(OvertimeStatus.ASSIGNED);
+        assignment.setStatus(OvertimeStatus.ACCEPTED);
         assignment.setEmployeeResponseNote(null);
 
         swapRequest.setStatus(OvertimeSwapStatus.ACCEPTED);
@@ -191,6 +286,19 @@ public class OvertimeServiceImpl implements OvertimeService {
 
         overtimeAssignmentRepository.save(assignment);
         overtimeSwapRequestRepository.save(swapRequest);
+
+       //Notify original employee
+        Map<String, String> data = new HashMap<>();
+        data.put("type", "OT_SWAP_ACCEPTED");
+        data.put("overtimeId", String.valueOf(assignment.getId()));
+        data.put("url", "/emp/overtime");
+
+        notifyEmployee(
+                swapRequest.getFromEmployee(),
+                "Swap Accepted",
+                swapRequest.getToEmployee().getFullName() + " accepted your swap",
+                data
+        );
 
         return mapToSwapDTO(swapRequest);
     }
@@ -210,8 +318,23 @@ public class OvertimeServiceImpl implements OvertimeService {
         swapRequest.setStatus(OvertimeSwapStatus.REJECTED);
         swapRequest.setRespondedAt(LocalDateTime.now());
 
+        assignment.setStatus(OvertimeStatus.ACCEPTED);
+
         overtimeAssignmentRepository.save(assignment);
         overtimeSwapRequestRepository.save(swapRequest);
+
+        //Notify original employee
+        Map<String, String> data = new HashMap<>();
+        data.put("type", "OT_SWAP_REJECTED");
+        data.put("overtimeId", String.valueOf(assignment.getId()));
+        data.put("url", "/emp/overtime");
+
+        notifyEmployee(
+                swapRequest.getFromEmployee(),
+                "Swap Rejected",
+                swapRequest.getToEmployee().getFullName() + " rejected your swap",
+                data
+        );
 
         return mapToSwapDTO(swapRequest);
     }

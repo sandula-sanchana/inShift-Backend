@@ -25,16 +25,27 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class PresenceCheckPlanningServiceImpl implements PresenceCheckPlanningService {
 
+    private static final Set<PresenceCheckPlanStatus> DAY_PLAN_EXISTING_STATUSES = Set.of(
+            PresenceCheckPlanStatus.PLANNED,
+            PresenceCheckPlanStatus.EXECUTING,
+            PresenceCheckPlanStatus.TRIGGERED,
+            PresenceCheckPlanStatus.SKIPPED
+    );
+
+    private static final int WORK_START_HOUR = 9;
+    private static final int WORK_END_HOUR = 17;
+    private static final int MIN_GAP_MINUTES = 45;
+
     private final EmployeeRepository employeeRepository;
     private final EmployeeBehaviorScoreRepository employeeBehaviorScoreRepository;
     private final PresenceCheckPlanRepository presenceCheckPlanRepository;
     private final TrustedDeviceService trustedDeviceService;
-
     private final Random random;
 
     @Override
@@ -51,13 +62,14 @@ public class PresenceCheckPlanningServiceImpl implements PresenceCheckPlanningSe
         Employee employee = employeeRepository.findById(employeeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
 
-        boolean alreadyPlanned = presenceCheckPlanRepository.existsByEmployeeEmployeeIdAndAttendanceDateAndStatus(
-                employeeId,
-                attendanceDate,
-                PresenceCheckPlanStatus.PLANNED
-        );
+        boolean alreadyPlannedForDay =
+                presenceCheckPlanRepository.existsByEmployeeEmployeeIdAndAttendanceDateAndStatusIn(
+                        employeeId,
+                        attendanceDate,
+                        DAY_PLAN_EXISTING_STATUSES
+                );
 
-        if (alreadyPlanned) {
+        if (alreadyPlannedForDay) {
             return presenceCheckPlanRepository.findByEmployeeEmployeeIdAndAttendanceDateOrderByPlannedAtAsc(
                     employeeId,
                     attendanceDate
@@ -84,8 +96,9 @@ public class PresenceCheckPlanningServiceImpl implements PresenceCheckPlanningSe
         PresenceCheckSourceExpected expectedSource = resolveExpectedSource(employee);
 
         List<LocalDateTime> randomTimes = generateRandomTimesForDay(attendanceDate, planCount);
-        List<PresenceCheckPlan> plans = new ArrayList<>();
+
         LocalDateTime now = LocalDateTime.now();
+        List<PresenceCheckPlan> plans = new ArrayList<>();
 
         for (int i = 0; i < randomTimes.size(); i++) {
             PresenceCheckPlan plan = PresenceCheckPlan.builder()
@@ -122,18 +135,25 @@ public class PresenceCheckPlanningServiceImpl implements PresenceCheckPlanningSe
             try {
                 generateDailyPlansForEmployee(employee.getEmployeeId(), attendanceDate);
             } catch (Exception e) {
-                System.err.println("Failed to generate presence-check plans for employee "
+                System.err.println("[PresencePlanDaily] Failed to generate plans for employee "
                         + employee.getEmployeeId() + ": " + e.getMessage());
             }
         }
     }
 
     private PresenceCheckSourceExpected resolveExpectedSource(Employee employee) {
-        if (trustedDeviceService.hasApprovedCompanyPc(employee)) {
+        boolean hasCompanyPc = trustedDeviceService.hasApprovedCompanyPc(employee);
+        boolean hasMobile = trustedDeviceService.hasApprovedMobile(employee);
+
+        if (hasCompanyPc && hasMobile) {
+            return PresenceCheckSourceExpected.ANY;
+        }
+
+        if (hasCompanyPc) {
             return PresenceCheckSourceExpected.COMPANY_PC;
         }
 
-        if (trustedDeviceService.hasApprovedMobile(employee)) {
+        if (hasMobile) {
             return PresenceCheckSourceExpected.MOBILE_BIOMETRIC;
         }
 
@@ -154,40 +174,71 @@ public class PresenceCheckPlanningServiceImpl implements PresenceCheckPlanningSe
     }
 
     private int resolveDueWindowMinutes(int currentRiskScore) {
-        if (currentRiskScore >= 75) return 2;
-        if (currentRiskScore >= 50) return 3;
-        if (currentRiskScore >= 25) return 5;
-        return 10;
+        if (currentRiskScore >= 75) return 5;
+        if (currentRiskScore >= 50) return 7;
+        if (currentRiskScore >= 25) return 10;
+        return 12;
     }
 
     private List<LocalDateTime> generateRandomTimesForDay(LocalDate date, int count) {
-        LocalDateTime start = date.atTime(9, 0);
-        LocalDateTime end = date.atTime(17, 0);
+        LocalDateTime start = date.atTime(WORK_START_HOUR, 0);
+        LocalDateTime end = date.atTime(WORK_END_HOUR, 0);
 
         long totalMinutes = Duration.between(start, end).toMinutes();
         if (totalMinutes <= 0) {
             throw new BadRequestException("Invalid planning window for presence checks");
         }
 
-        List<LocalDateTime> result = new ArrayList<>();
-
         int safeCount = Math.max(1, count);
 
-        while (result.size() < safeCount) {
+        List<LocalDateTime> result = new ArrayList<>();
+        int attempts = 0;
+        int maxAttempts = 500;
+
+        while (result.size() < safeCount && attempts < maxAttempts) {
+            attempts++;
+
             int randomMinute = random.nextInt((int) totalMinutes);
             LocalDateTime candidate = start.plusMinutes(randomMinute);
 
-            if (!result.contains(candidate)) {
+            boolean duplicate = result.contains(candidate);
+            boolean tooClose = result.stream().anyMatch(existing ->
+                    Math.abs(Duration.between(existing, candidate).toMinutes()) < MIN_GAP_MINUTES
+            );
+
+            if (!duplicate && !tooClose) {
                 result.add(candidate);
             }
+        }
 
-            if (result.size() >= totalMinutes) {
-                break;
-            }
+        if (result.size() < safeCount) {
+            result = generateEvenlySpacedTimes(start, end, safeCount);
         }
 
         return result.stream()
                 .sorted(Comparator.naturalOrder())
                 .toList();
+    }
+
+    private List<LocalDateTime> generateEvenlySpacedTimes(
+            LocalDateTime start,
+            LocalDateTime end,
+            int count
+    ) {
+        List<LocalDateTime> times = new ArrayList<>();
+        long totalMinutes = Duration.between(start, end).toMinutes();
+
+        if (count <= 1) {
+            times.add(start.plusMinutes(totalMinutes / 2));
+            return times;
+        }
+
+        long step = totalMinutes / (count + 1);
+
+        for (int i = 1; i <= count; i++) {
+            times.add(start.plusMinutes(step * i));
+        }
+
+        return times;
     }
 }

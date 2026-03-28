@@ -20,28 +20,36 @@ public class PresenceCheckSchedulerServiceImpl implements PresenceCheckScheduler
 
     @Override
     @Transactional
-    @Scheduled(fixedDelay = 60000)
+    @Scheduled(fixedDelay = 10000) // run every 10 sec
     public void processMissedPresenceChecks() {
-        List<PresenceCheck> overdueChecks = presenceCheckRepository.findByStatusAndDueAtBefore(
-                PresenceCheckStatus.PENDING,
-                LocalDateTime.now()
-        );
 
-        if (overdueChecks.isEmpty()) {
+        List<PresenceCheck> pendingChecks =
+                presenceCheckRepository.findByStatus(PresenceCheckStatus.PENDING);
+
+        if (pendingChecks.isEmpty()) {
             return;
         }
 
         LocalDateTime now = LocalDateTime.now();
 
-        for (PresenceCheck check : overdueChecks) {
-            check.setStatus(PresenceCheckStatus.MISSED);
-            check.setMissedResponse(true);
-            check.setLateResponse(true);
-            check.setEscalated(true);
-            check.setEscalatedAt(now);
-            check.setEscalationLevel(1);
+        for (PresenceCheck check : pendingChecks) {
+
+            if (check.getDueAt() == null) continue;
+
+            // Add grace buffer
+            LocalDateTime expiryTime = check.getDueAt().plusSeconds(30);
+
+            if (expiryTime.isBefore(now)) {
+
+                check.setStatus(PresenceCheckStatus.MISSED);
+                check.setMissedResponse(true);
+                check.setLateResponse(true);
+                check.setEscalated(true);
+                check.setEscalatedAt(now);
+                check.setEscalationLevel(1);
+            }
         }
 
-        presenceCheckRepository.saveAll(overdueChecks);
+        presenceCheckRepository.saveAll(pendingChecks);
     }
 }

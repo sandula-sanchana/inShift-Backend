@@ -15,17 +15,17 @@ public class PresenceDailyPlanningSchedulerServiceImpl implements PresenceDailyP
     private final PresenceCheckPlanningService presenceCheckPlanningService;
 
     @Override
-//    @Scheduled(cron = "0 0 8 * * *")
-    @Scheduled(cron = "0 * * * * *")
+    @Scheduled(cron = "0 0 8 * * *")
     public void generateTodayPlans() {
         LocalDate today = LocalDate.now();
 
         try {
-            System.out.println("Starting daily presence-check plan generation for " + today);
+            System.out.println("[PresencePlanDaily] Starting daily plan generation for " + today);
             presenceCheckPlanningService.generateDailyPlansForAllEligibleEmployees(today);
-            System.out.println("Finished daily presence-check plan generation for " + today);
+            System.out.println("[PresencePlanDaily] Finished daily plan generation for " + today);
         } catch (Exception e) {
-            System.err.println("Failed daily presence-check plan generation for " + today + ": " + e.getMessage());
+            System.err.println("[PresencePlanDaily] Failed daily plan generation for "
+                    + today + ": " + e.getMessage());
         }
     }
 }
