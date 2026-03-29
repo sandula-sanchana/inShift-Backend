@@ -60,4 +60,12 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
 
 
 
+
+    List<AttendanceRecord> findAllByEventTimeBetweenOrderByEventTimeDesc(
+            LocalDateTime start,
+            LocalDateTime end
+    );
+
+
+
 }
