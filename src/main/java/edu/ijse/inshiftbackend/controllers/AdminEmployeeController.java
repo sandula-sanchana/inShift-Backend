@@ -22,7 +22,6 @@ public class AdminEmployeeController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public APIResponse<Map<String, Object>> createEmployee(@RequestBody @Valid EmployeeDTO employeeDTO) {
-
         String tempPassword = employeeService.saveEmployee(employeeDTO);
 
         return new APIResponse<>(
@@ -42,10 +41,45 @@ public class AdminEmployeeController {
         );
     }
 
-    @GetMapping("/search")
-    public APIResponse<List<EmployeeDTO>> searchEmployees(
-            @RequestParam("q") String query
+    @GetMapping("/{id}")
+    @ResponseStatus(HttpStatus.OK)
+    public APIResponse<EmployeeDTO> getEmployeeById(@PathVariable Long id) {
+        return new APIResponse<>(
+                200,
+                "Employee fetched successfully",
+                employeeService.getEmployeeById(id)
+        );
+    }
+
+    @PutMapping("/{id}")
+    @ResponseStatus(HttpStatus.OK)
+    public APIResponse<String> updateEmployee(
+            @PathVariable Long id,
+            @RequestBody @Valid EmployeeDTO employeeDTO
     ) {
+        employeeService.updateEmployee(id, employeeDTO);
+
+        return new APIResponse<>(
+                200,
+                "Employee updated successfully",
+                null
+        );
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.OK)
+    public APIResponse<String> deleteEmployee(@PathVariable Long id) {
+        employeeService.deleteEmployee(id);
+
+        return new APIResponse<>(
+                200,
+                "Employee deleted successfully",
+                null
+        );
+    }
+
+    @GetMapping("/search")
+    public APIResponse<List<EmployeeDTO>> searchEmployees(@RequestParam("q") String query) {
         String q = query == null ? "" : query.trim().toLowerCase();
 
         List<EmployeeDTO> results = employeeService.getAllEmployees()
@@ -64,5 +98,4 @@ public class AdminEmployeeController {
                 results
         );
     }
-
 }

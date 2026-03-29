@@ -15,8 +15,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 
@@ -91,6 +93,52 @@ public class AttendanceReportServiceImpl implements AttendanceReportService {
                 .summary(summary)
                 .rows(rows)
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] exportAdminAttendanceReportCsv(AttendanceReportFilterDTO filter) {
+        AttendanceReportResponseDTO report = getAdminAttendanceReport(filter);
+        List<AttendanceReportRowDTO> rows = report.getRows();
+
+        StringBuilder csv = new StringBuilder();
+
+        csv.append("Attendance ID,Employee ID,Employee Code,Employee Name,Branch ID,Branch Name,Type,Source,Status,Event Time,Attendance Mark,Late Minutes,Early Leave Minutes,Overtime Minutes,Verified,Verification Method,Decision Note,Reason\n");
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+        for (AttendanceReportRowDTO row : rows) {
+            csv.append(csvValue(row.getAttendanceId())).append(",");
+            csv.append(csvValue(row.getEmployeeId())).append(",");
+            csv.append(csvValue(row.getEmployeeCode())).append(",");
+            csv.append(csvValue(row.getEmployeeName())).append(",");
+            csv.append(csvValue(row.getBranchId())).append(",");
+            csv.append(csvValue(row.getBranchName())).append(",");
+            csv.append(csvValue(row.getType())).append(",");
+            csv.append(csvValue(row.getSource())).append(",");
+            csv.append(csvValue(row.getStatus())).append(",");
+            csv.append(csvValue(row.getEventTime() != null ? row.getEventTime().format(formatter) : "")).append(",");
+            csv.append(csvValue(row.getAttendanceMark())).append(",");
+            csv.append(csvValue(row.getLateMinutes())).append(",");
+            csv.append(csvValue(row.getEarlyLeaveMinutes())).append(",");
+            csv.append(csvValue(row.getOvertimeMinutes())).append(",");
+            csv.append(csvValue(row.getVerified())).append(",");
+            csv.append(csvValue(row.getVerificationMethod())).append(",");
+            csv.append(csvValue(row.getDecisionNote())).append(",");
+            csv.append(csvValue(row.getReason())).append("\n");
+        }
+
+        return csv.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private String csvValue(Object value) {
+        if (value == null) {
+            return "";
+        }
+
+        String text = String.valueOf(value);
+        text = text.replace("\"", "\"\"");
+        return "\"" + text + "\"";
     }
 
     private AttendanceStatus parseStatus(String value) {

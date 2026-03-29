@@ -1,6 +1,7 @@
 package edu.ijse.inshiftbackend.controllers;
 
 import edu.ijse.inshiftbackend.dto.AuthDTO;
+import edu.ijse.inshiftbackend.dto.RefreshTokenRequestDTO;
 import edu.ijse.inshiftbackend.dto.response.AuthResponseDTO;
 import edu.ijse.inshiftbackend.service.AuthService;
 import edu.ijse.inshiftbackend.util.APIResponse;
@@ -20,13 +21,24 @@ public class AuthController {
     @PostMapping("/login")
     @ResponseStatus(HttpStatus.OK)
     public APIResponse<AuthResponseDTO> login(@RequestBody @Valid AuthDTO authDTO) {
-
         AuthResponseDTO response = authService.login(authDTO);
 
         return new APIResponse<>(
                 HttpStatus.OK.value(),
                 "Login Successful",
-                 response
+                response
+        );
+    }
+
+    @PostMapping("/refresh")
+    @ResponseStatus(HttpStatus.OK)
+    public APIResponse<AuthResponseDTO> refreshToken(@RequestBody RefreshTokenRequestDTO refreshTokenRequestDTO) {
+        AuthResponseDTO response = authService.refreshToken(refreshTokenRequestDTO);
+
+        return new APIResponse<>(
+                HttpStatus.OK.value(),
+                "Token refreshed successfully",
+                response
         );
     }
 }

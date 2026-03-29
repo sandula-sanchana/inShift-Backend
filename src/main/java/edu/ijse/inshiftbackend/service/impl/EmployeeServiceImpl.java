@@ -32,16 +32,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
     @Override
     public String saveEmployee(EmployeeDTO dto) {
-
-        System.out.println(">>> saveEmployee called: " + dto);
-
         if (dto == null) throw new BadRequestException("employeeDTO is null");
-
-        String empCode = dto.getEmpCode().trim();
-
-        if (employeeRepository.existsByEmpCode(empCode)) {
-            throw new BadRequestException("Employee code already exists");
-        }
 
         if (dto.getEmail() != null && !dto.getEmail().isBlank()) {
             String email = dto.getEmail().trim();
@@ -53,41 +44,32 @@ public class EmployeeServiceImpl implements EmployeeService {
         Branch branch = branchRepository.findById(dto.getBranchId())
                 .orElseThrow(() -> new ResourceNotFoundException("Branch not found"));
 
-        // auto-generate temp password
         String tempPassword = generateTempPassword();
+        String generatedEmpCode = generateNextEmpCode();
 
         Employee emp = modelMapper.map(dto, Employee.class);
         emp.setEmployeeId(null);
-        emp.setEmpCode(empCode);
+        emp.setEmpCode(generatedEmpCode);
         emp.setFullName(dto.getFullName().trim());
         emp.setEmail(dto.getEmail() == null || dto.getEmail().isBlank() ? null : dto.getEmail().trim());
         emp.setPhone(dto.getPhone() == null || dto.getPhone().isBlank() ? null : dto.getPhone().trim());
         emp.setRole(dto.getRole());
-        emp.setActive(dto.getActive());
+        emp.setActive(dto.getActive() != null ? dto.getActive() : true);
         emp.setMustChangePassword(true);
         emp.setBranch(branch);
-
-        // store only hash
         emp.setPasswordHash(passwordEncoder.encode(tempPassword));
 
         employeeRepository.save(emp);
 
-        // return temp password ONCE (admin will show it)
         return tempPassword;
     }
 
     @Override
     public void updateEmployee(Long id, EmployeeDTO dto) {
-
         if (dto == null) throw new BadRequestException("employeeDTO is null");
 
         Employee existing = employeeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
-
-        String newCode = dto.getEmpCode().trim();
-        if (!existing.getEmpCode().equals(newCode) && employeeRepository.existsByEmpCode(newCode)) {
-            throw new BadRequestException("Employee code already exists");
-        }
 
         String newEmail = dto.getEmail() == null ? null : dto.getEmail().trim();
         if (newEmail != null && !newEmail.isBlank()) {
@@ -100,7 +82,7 @@ public class EmployeeServiceImpl implements EmployeeService {
         Branch branch = branchRepository.findById(dto.getBranchId())
                 .orElseThrow(() -> new ResourceNotFoundException("Branch not found"));
 
-        existing.setEmpCode(newCode);
+        // empCode is NOT editable
         existing.setFullName(dto.getFullName().trim());
         existing.setEmail(newEmail == null || newEmail.isBlank() ? null : newEmail);
         existing.setPhone(dto.getPhone() == null || dto.getPhone().isBlank() ? null : dto.getPhone().trim());
@@ -108,7 +90,6 @@ public class EmployeeServiceImpl implements EmployeeService {
         existing.setActive(dto.getActive());
         existing.setBranch(branch);
 
-        //We do NOT update password here (admin reset can be separate endpoint later)
         employeeRepository.save(existing);
     }
 
@@ -163,7 +144,6 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .active(emp.getActive())
                 .build();
 
-
         dto.setPassword(null);
         return dto;
     }
@@ -187,7 +167,6 @@ public class EmployeeServiceImpl implements EmployeeService {
             throw new BadRequestException("Current password is incorrect");
         }
 
-
         if (passwordEncoder.matches(dto.getNewPassword(), emp.getPasswordHash())) {
             throw new BadRequestException("New password must be different");
         }
@@ -198,10 +177,26 @@ public class EmployeeServiceImpl implements EmployeeService {
     }
 
     private String generateTempPassword() {
-        //  Temp@ + 4 digits + 1 letter
         int n = 1000 + RAND.nextInt(9000);
         char ch = (char) ('A' + RAND.nextInt(26));
         return "Temp@" + n + ch;
     }
 
+    private String generateNextEmpCode() {
+        Employee lastEmployee = employeeRepository.findTopByOrderByEmployeeIdDesc().orElse(null);
+
+        if (lastEmployee == null || lastEmployee.getEmpCode() == null || lastEmployee.getEmpCode().isBlank()) {
+            return "EMP-001";
+        }
+
+        String lastCode = lastEmployee.getEmpCode().trim().toUpperCase();
+
+        try {
+            String numericPart = lastCode.replace("EMP-", "").trim();
+            int nextNumber = Integer.parseInt(numericPart) + 1;
+            return String.format("EMP-%03d", nextNumber);
+        } catch (Exception e) {
+            throw new BadRequestException("Failed to generate next employee code");
+        }
+    }
 }

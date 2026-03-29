@@ -19,27 +19,63 @@ public class AdminBranchController {
 
     private final BranchService branchService;
 
+    @PostMapping
+    public ResponseEntity<APIResponse<String>> createBranch(@RequestBody @Valid BranchDTO branchDTO) {
+        branchService.createBranch(branchDTO);
 
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+                new APIResponse<>(
+                        201,
+                        "Branch saved successfully",
+                        null
+                )
+        );
+    }
 
-     @PostMapping
-     public  ResponseEntity<APIResponse<String>> createBranch(@RequestBody @Valid BranchDTO branchDTO){
-         branchService.createBranch(branchDTO);
-         return ResponseEntity.status(HttpStatus.CREATED).body(
-                 new APIResponse<>(201,
-                         "Branch Saved Successfully",
-                         null)
-         );
+    @GetMapping
+    @ResponseStatus(HttpStatus.OK)
+    public APIResponse<List<BranchDTO>> getAllBranches() {
+        return new APIResponse<>(
+                200,
+                "OK",
+                branchService.getAllBranch()
+        );
+    }
 
-     }
-     @GetMapping
-     @ResponseStatus(HttpStatus.OK)
-     public APIResponse<List<BranchDTO>> updateBranch(){
-         List<BranchDTO> branches=branchService.getAllBranch();
-         return new APIResponse<>(
-                 200,
-                 "Ok",
-                 branches
-         );
-     }
+    @GetMapping("/{id}")
+    @ResponseStatus(HttpStatus.OK)
+    public APIResponse<BranchDTO> getBranchById(@PathVariable Long id) {
+        return new APIResponse<>(
+                200,
+                "Branch fetched successfully",
+                branchService.getBranchById(id)
+        );
+    }
 
+    @PutMapping("/{id}")
+    @ResponseStatus(HttpStatus.OK)
+    public APIResponse<String> updateBranch(
+            @PathVariable Long id,
+            @RequestBody @Valid BranchDTO branchDTO
+    ) {
+        branchService.updateBranch(id, branchDTO);
+
+        return new APIResponse<>(
+                200,
+                "Branch updated successfully",
+                null
+        );
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.OK)
+    public APIResponse<String> deleteBranch(@PathVariable Long id) {
+        branchService.deleteBranch(id);
+
+        return new APIResponse<>(
+                200,
+                "Branch deleted successfully",
+                null
+        );
+    }
 }

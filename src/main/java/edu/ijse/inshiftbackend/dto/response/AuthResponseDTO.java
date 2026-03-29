@@ -8,7 +8,8 @@ import lombok.Data;
 @Data
 @Builder
 public class AuthResponseDTO {
-    private String access_token;
+    private String accessToken;
+    private String refreshToken;
     private String role;
     private boolean passwordMustChange;
 }

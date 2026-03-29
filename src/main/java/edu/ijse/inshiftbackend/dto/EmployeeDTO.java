@@ -16,8 +16,8 @@ public class EmployeeDTO {
     @Nullable
     private Long employeeId;
 
-    @NotBlank(message = "Employee code is required")
-    @Size(min = 2, max = 20, message = "Employee code must be 2-20 characters")
+    @Nullable
+    @Size(max = 20, message = "Employee code must not exceed 20 characters")
     private String empCode;
 
     @NotBlank(message = "Full name is required")
