@@ -42,4 +42,27 @@ public class AdminEmployeeController {
         );
     }
 
+    @GetMapping("/search")
+    public APIResponse<List<EmployeeDTO>> searchEmployees(
+            @RequestParam("q") String query
+    ) {
+        String q = query == null ? "" : query.trim().toLowerCase();
+
+        List<EmployeeDTO> results = employeeService.getAllEmployees()
+                .stream()
+                .filter(EmployeeDTO::getActive)
+                .filter(emp ->
+                        (emp.getEmpCode() != null && emp.getEmpCode().toLowerCase().contains(q)) ||
+                                (emp.getFullName() != null && emp.getFullName().toLowerCase().contains(q))
+                )
+                .limit(10)
+                .toList();
+
+        return new APIResponse<>(
+                200,
+                "Employees fetched successfully",
+                results
+        );
+    }
+
 }

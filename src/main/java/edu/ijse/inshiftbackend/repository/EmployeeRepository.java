@@ -16,4 +16,6 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
     long countByActiveTrue();
 
     List<Employee> findAllByActiveTrue();
+
+
 }
