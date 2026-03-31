@@ -36,4 +36,4 @@ build/
 
 inshift-8b9f0-firebase-adminsdk-fbsvc-17358387c2.json
 
-application.properties
+src/main/resources/application.properties
