@@ -3,6 +3,7 @@ package edu.ijse.inshiftbackend.exception;
 import edu.ijse.inshiftbackend.exception.custom.BadRequestException;
 import edu.ijse.inshiftbackend.exception.custom.ResourceNotFoundException;
 import edu.ijse.inshiftbackend.util.APIResponse;
+import io.jsonwebtoken.ExpiredJwtException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -57,5 +58,13 @@ public class GlobalExceptionHandler {
                         exception.getMessage() != null ? exception.getMessage() : "Internal Server error",
                         null
                 ));
+    }
+
+    @ExceptionHandler(ExpiredJwtException.class)
+    public ResponseEntity<APIResponse<String>> expiredJwtExceptionHandler(ExpiredJwtException e) {
+        log.warn("Expired jwt token: {}", e.getMessage());
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new APIResponse<>(401, e.getMessage(), null));
     }
 }
