@@ -34,4 +34,11 @@ public class OvertimeAssignmentResponseDTO {
 
     private LocalDateTime assignedAt;
     private LocalDateTime updatedAt;
+
+    private Boolean otStarted;
+    private Boolean otOver;
+    private Boolean canAccept;
+    private Boolean canDecline;
+    private Boolean canSwap;
+    private String displayStatus;
 }

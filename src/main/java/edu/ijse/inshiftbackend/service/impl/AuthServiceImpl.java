@@ -65,6 +65,8 @@ public class AuthServiceImpl implements AuthService {
             throw new BadCredentialsException("Refresh token is required");
         }
 
+        System.out.println("refresh token called");
+
         String refreshToken = refreshTokenRequestDTO.getRefreshToken().trim();
 
         if (!jwtUtil.validateRefreshToken(refreshToken)) {
